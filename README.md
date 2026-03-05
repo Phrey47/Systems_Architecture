@@ -1,3 +1,1 @@
-# Systems-Architecture
-
-# This is for my Systems Architecture subject.
+# This is for my Systems Integration and Architecture subject.
