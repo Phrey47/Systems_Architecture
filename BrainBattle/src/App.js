@@ -54,10 +54,28 @@ const Dot = ({ color = C.green }) => (
   <span style={{ width:7, height:7, borderRadius:"50%", background:color, display:"inline-block", animation:"pulse 1.5s infinite" }}/>
 );
 
-function Avatar({ size = 36, children, color }) {
+// ── UPDATED: Avatar supports custom Image URLs with Fallback ──
+function Avatar({ size = 36, children, color, url }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [url]);
+
+  const showImage = url && !imgFailed && url !== "null";
+
   return (
-    <div style={{ width:size, height:size, borderRadius:"50%", flexShrink:0, background:color || `linear-gradient(135deg,${C.purple},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*.38, fontWeight:800, color:"#fff" }}>
-      {children}
+    <div style={{ width:size, height:size, borderRadius:"50%", flexShrink:0, background:color || `linear-gradient(135deg,${C.purple},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*.38, fontWeight:800, color:"#fff", overflow:"hidden", border: `2px solid ${C.bgCardAlt}` }}>
+      {showImage ? (
+        <img 
+          src={url} 
+          alt="avatar" 
+          style={{width:"100%", height:"100%", objectFit:"cover"}} 
+          onError={() => setImgFailed(true)} 
+        />
+      ) : (
+        children
+      )}
     </div>
   );
 }
@@ -74,8 +92,36 @@ function Footer() {
   );
 }
 
-function Nav({ active, onNavigate, user, onLogout, minimal }) {
+function Nav({ active, onNavigate, user, onUpdateUser, onLogout, minimal }) {
   const [dropOpen, setDropOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchNotifs = () => {
+      fetch(`http://localhost:5001/api/notifications/${user.user_id}`)
+        .then(res => res.json())
+        .then(data => setNotifications(data))
+        .catch(err => console.error(err));
+    };
+    fetchNotifs();
+    const intv = setInterval(fetchNotifs, 10000); 
+    return () => clearInterval(intv);
+  }, [user]);
+
+  const claimReward = (id) => {
+    fetch('http://localhost:5001/api/notifications/claim', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notification_id: id, user_id: user.user_id })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.updatedUser) onUpdateUser({ ...user, ...data.updatedUser });
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    });
+  };
+
   return (
     <nav style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", height:62, background:"rgba(8,12,24,.92)", backdropFilter:"blur(16px)", borderBottom:`1px solid ${C.border}`, position:"sticky", top:0, zIndex:200 }}>
       <button onClick={() => onNavigate("home")} style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:22, fontWeight:900, color:C.purpleL, letterSpacing:.5 }}>
@@ -95,46 +141,76 @@ function Nav({ active, onNavigate, user, onLogout, minimal }) {
         </div>
       )}
 
-      <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+      <div style={{ display:"flex", gap:16, alignItems:"center" }}>
         {user ? (
-          <div style={{ position:"relative" }}>
-            <button onClick={() => setDropOpen(v=>!v)}
-              style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 10px", borderRadius:10, border:`1px solid ${C.border}`, transition:"border-color .15s" }}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=C.purple}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
-              <div style={{ display:"flex", alignItems:"center", gap:4, marginRight: 8 }}>
-                <span style={{ fontSize:14 }}>🪙</span>
-                <span style={{ fontSize:13, fontWeight:800, color:C.gold }}>{user.coins || 0}</span>
-              </div>
-              <Avatar size={30} color={user.avatarColor}>{user.initials}</Avatar>
-              <span style={{ fontSize:13, fontWeight:700 }}>{user.username}</span>
-              <span style={{ fontSize:10, color:C.textMuted }}>▾</span>
-            </button>
-            {dropOpen && (
-              <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, width:180, background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", zIndex:300, animation:"fadeIn .15s ease" }}>
-                {[
-                  { label:"👤  My Profile",   action:"profile" },
-                  { label:"📋  My Quests",    action:"quests" },
-                  { label:"⚙️  Settings",     action:"settings" },
-                ].map(item => (
-                  <button key={item.label} onClick={() => { setDropOpen(false); onNavigate(item.action); }}
-                    style={{ width:"100%", padding:"12px 16px", textAlign:"left", fontSize:13, fontWeight:600, color:C.textMuted, transition:"all .15s" }}
-                    onMouseEnter={e=>{ e.currentTarget.style.background=C.bgCardAlt; e.currentTarget.style.color=C.text; }}
-                    onMouseLeave={e=>{ e.currentTarget.style.background="none"; e.currentTarget.style.color=C.textMuted; }}>
-                    {item.label}
-                  </button>
-                ))}
-                <div style={{ borderTop:`1px solid ${C.border}` }}>
-                  <button onClick={() => { setDropOpen(false); onLogout(); }}
-                    style={{ width:"100%", padding:"12px 16px", textAlign:"left", fontSize:13, fontWeight:600, color:C.red, transition:"background .15s" }}
-                    onMouseEnter={e=>e.currentTarget.style.background=C.bgCardAlt}
-                    onMouseLeave={e=>e.currentTarget.style.background="none"}>
-                    🚪  Log Out
-                  </button>
+          <>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => { setNotifOpen(!notifOpen); setDropOpen(false); }} style={{ position: "relative", width: 38, height: 38, borderRadius: "50%", background: C.bgCard, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                🔔
+                {notifications.length > 0 && <span style={{ position: "absolute", top: -2, right: -2, width: 12, height: 12, borderRadius: "50%", background: C.red, border: `2px solid ${C.bg}` }} />}
+              </button>
+
+              {notifOpen && (
+                <div style={{ position:"absolute", top:"calc(100% + 12px)", right:0, width:320, background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", zIndex:300, animation:"fadeIn .15s ease", boxShadow: "0 10px 40px rgba(0,0,0,0.5)" }}>
+                  <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, fontWeight: 800, fontSize: 14 }}>Notifications</div>
+                  <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: "center", color: C.textMuted, fontSize: 13 }}>No new notifications.</div>
+                    ) : notifications.map(n => (
+                      <div key={n.id} style={{ padding: "16px 18px", borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: C.green }}>{n.message}</div>
+                        <div style={{ display: "flex", gap: 8, fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+                          {n.coins_reward > 0 && <span>🪙 {n.coins_reward}</span>}
+                          {n.power_5050_reward > 0 && <span>👁 {n.power_5050_reward}</span>}
+                          {n.power_time_reward > 0 && <span>⏱ {n.power_time_reward}</span>}
+                        </div>
+                        <button onClick={() => claimReward(n.id)} style={{ width: "100%", padding: "8px", background: `linear-gradient(135deg, ${C.purple}, ${C.cyan})`, borderRadius: 6, color: "#fff", fontWeight: 700, fontSize: 12 }}>Claim Reward</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+
+            <div style={{ position:"relative" }}>
+              <button onClick={() => { setDropOpen(!dropOpen); setNotifOpen(false); }}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 10px", borderRadius:10, border:`1px solid ${C.border}`, transition:"border-color .15s" }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=C.purple}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                <div style={{ display:"flex", alignItems:"center", gap:4, marginRight: 8 }}>
+                  <span style={{ fontSize:14 }}>🪙</span>
+                  <span style={{ fontSize:13, fontWeight:800, color:C.gold }}>{user.coins || 0}</span>
+                </div>
+                <Avatar size={30} color={user.avatarColor} url={user.avatar_url}>{user.initials}</Avatar>
+                <span style={{ fontSize:13, fontWeight:700 }}>{user.username}</span>
+                <span style={{ fontSize:10, color:C.textMuted }}>▾</span>
+              </button>
+              {dropOpen && (
+                <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, width:180, background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", zIndex:300, animation:"fadeIn .15s ease" }}>
+                  {[
+                    { label:"👤  My Profile",   action:"profile" },
+                    { label:"📋  My Quests",    action:"quests" },
+                    { label:"⚙️  Settings",     action:"settings" }, 
+                  ].map(item => (
+                    <button key={item.label} onClick={() => { setDropOpen(false); onNavigate(item.action); }}
+                      style={{ width:"100%", padding:"12px 16px", textAlign:"left", fontSize:13, fontWeight:600, color:C.textMuted, transition:"all .15s" }}
+                      onMouseEnter={e=>{ e.currentTarget.style.background=C.bgCardAlt; e.currentTarget.style.color=C.text; }}
+                      onMouseLeave={e=>{ e.currentTarget.style.background="none"; e.currentTarget.style.color=C.textMuted; }}>
+                      {item.label}
+                    </button>
+                  ))}
+                  <div style={{ borderTop:`1px solid ${C.border}` }}>
+                    <button onClick={() => { setDropOpen(false); onLogout(); }}
+                      style={{ width:"100%", padding:"12px 16px", textAlign:"left", fontSize:13, fontWeight:600, color:C.red, transition:"background .15s" }}
+                      onMouseEnter={e=>e.currentTarget.style.background=C.bgCardAlt}
+                      onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                      🚪  Log Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <div style={{ display:"flex", gap:10 }}>
             <button className="btn-outline" onClick={() => onNavigate("login")} style={{ padding:"9px 20px", fontSize:13 }}>Log In</button>
@@ -153,13 +229,12 @@ function Sidebar({ active, onNavigate, user }) {
     { id:"achievements", icon:"🎖", label:"Achievements" },
   ];
   const isActive = (id) => id==="arena" ? ["arena","leaderboard","training","battle"].includes(active) : active===id;
-  
   const rank = user?.level >= 10 ? "DIAMOND I" : user?.level >= 5 ? "PLATINUM III" : "GOLD I";
 
   return (
     <aside style={{ width:214, background:C.bgCard, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", flexShrink:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"20px 18px", borderBottom:`1px solid ${C.border}` }}>
-        <Avatar size={38} color={user?.avatarColor}>{user?.initials || "👤"}</Avatar>
+        <Avatar size={38} color={user?.avatarColor} url={user?.avatar_url}>{user?.initials || "👤"}</Avatar>
         <div>
           <div style={{ fontSize:13, fontWeight:700 }}>{user?.username || "Guest"}</div>
           <div style={{ fontSize:11, color:C.green, fontWeight:700 }}>LVL {user?.level || 1} • {rank}</div>
@@ -187,10 +262,10 @@ function Sidebar({ active, onNavigate, user }) {
   );
 }
 
-function Shell({ active, onNavigate, user, onLogout, children }) {
+function Shell({ active, onNavigate, user, onUpdateUser, onLogout, children }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
-      <Nav active={active} onNavigate={onNavigate} user={user} onLogout={onLogout} />
+      <Nav active={active} onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout} />
       <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
         <Sidebar active={active} onNavigate={onNavigate} user={user} />
         <main style={{ flex:1, overflowY:"auto" }}>{children}</main>
@@ -211,17 +286,14 @@ function ShopPage({ onNavigate, user, onUpdateUser, onLogout }) {
       setTimeout(() => setMsg(null), 2000);
       return;
     }
-
     fetch('http://localhost:5001/api/shop/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: user.user_id, item, cost })
     })
     .then(res => res.json())
     .then(data => {
-      if (data.error) {
-        setMsg({ type: "error", text: data.error });
-      } else {
+      if (data.error) { setMsg({ type: "error", text: data.error }); } 
+      else {
         onUpdateUser({ ...user, ...data.updatedUser });
         setMsg({ type: "success", text: "Purchase successful!" });
       }
@@ -236,46 +308,86 @@ function ShopPage({ onNavigate, user, onUpdateUser, onLogout }) {
     { id: 'poll', icon: "👥", title: "Audience Poll", desc: "Shows what the crowd thinks.", cost: 5, count: user?.power_poll || 0 },
   ];
 
-  if (!user) return <Shell active="shop" onNavigate={onNavigate} user={user} onLogout={onLogout}><div style={{ padding:"100px", textAlign:"center" }}>Please log in.</div></Shell>;
+  if (!user) return <Shell active="shop" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}><div style={{ padding:"100px", textAlign:"center" }}>Please log in.</div></Shell>;
 
   return (
-    <Shell active="shop" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+    <Shell active="shop" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ padding:"36px 40px", maxWidth:860, margin:"0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28 }}>
           <div className="fade-up">
             <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Item Shop</h2>
             <p style={{ color:C.textMuted,fontSize:14 }}>Spend your hard-earned coins on lifelines for the Arena.</p>
           </div>
-          <div className="fade-up card" style={{ padding: "12px 24px", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 24 }}>🪙</span>
-            <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize: 28, fontWeight: 900, color: C.gold }}>{user.coins}</span>
-          </div>
         </div>
-
         {msg && (
           <div className="fade-in" style={{ padding: 14, background: msg.type === "success" ? `${C.green}18` : `${C.red}18`, border: `1px solid ${msg.type === "success" ? C.green : C.red}`, color: msg.type === "success" ? C.green : C.red, borderRadius: 10, marginBottom: 20, fontWeight: 700, textAlign: "center" }}>
             {msg.text}
           </div>
         )}
-
         <div className="fade-up" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:20, animationDelay:".1s" }}>
           {inventory.map((item) => (
             <div key={item.id} className="card" style={{ padding:"28px 24px", textAlign: "center" }}>
               <div style={{ width:60, height:60, borderRadius:"50%", background:`${C.purple}22`, margin:"0 auto 16px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>{item.icon}</div>
               <h3 style={{ fontSize:18, fontWeight:800, marginBottom:8 }}>{item.title}</h3>
               <p style={{ fontSize:13, color:C.textMuted, lineHeight:1.5, marginBottom:20 }}>{item.desc}</p>
-              
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: C.textDim }}>YOU OWN: <span style={{ color: C.text }}>{item.count}</span></span>
                 <span style={{ fontSize: 14, fontWeight: 800, color: C.gold }}>🪙 {item.cost}</span>
               </div>
-              
-              <button className="btn-outline" onClick={() => buyItem(item.id, item.cost)} style={{ width: "100%", padding: "10px", borderColor: C.gold, color: C.gold }}>
-                Buy Item
-              </button>
+              <button className="btn-outline" onClick={() => buyItem(item.id, item.cost)} style={{ width: "100%", padding: "10px", borderColor: C.gold, color: C.gold }}>Buy Item</button>
             </div>
           ))}
         </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ACHIEVEMENTS PAGE
+// ══════════════════════════════════════════════════════════════════════════════
+function AchievementsPage({ onNavigate, user, onUpdateUser, onLogout }) {
+  const [achievements, setAchievements] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user?.user_id) {
+      fetch(`http://localhost:5001/api/achievements/${user.user_id}`)
+        .then(res => res.json())
+        .then(data => { setAchievements(data); setLoading(false); })
+        .catch(err => { console.error(err); setLoading(false); });
+    } else { setLoading(false); }
+  }, [user]);
+
+  if (!user) return <Shell active="achievements" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}><div style={{ padding:"100px", textAlign:"center", color: C.textMuted }}><h2>Log in to view your Hall of Fame!</h2></div></Shell>;
+
+  return (
+    <Shell active="achievements" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
+      <div style={{ padding:"36px 40px", maxWidth:860, margin:"0 auto" }}>
+        <div className="fade-up">
+          <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Hall of Fame</h2>
+          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Your permanent record of greatness.</p>
+        </div>
+        
+        {loading ? (
+          <div style={{ color: C.textMuted, textAlign: "center", padding: "40px" }}><Dot/> Loading Achievements...</div>
+        ) : (
+          <div className="fade-up" style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:16, animationDelay:".1s" }}>
+            {achievements.length === 0 ? (
+               <div style={{ gridColumn: "span 2", padding: 24, textAlign: "center", color: C.textMuted }}>Keep playing to earn permanent badges!</div>
+            ) : achievements.map((ach) => (
+              <div key={ach.id} className="card" style={{ padding:"24px 28px", display:"flex", alignItems:"center", gap:20 }}>
+                <div style={{ width:56, height:56, borderRadius:14, background:`${C.gold}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, flexShrink: 0 }}>
+                  {ach.icon || "🏆"}
+                </div>
+                <div style={{ flex:1 }}>
+                  <h3 style={{ fontSize:16, fontWeight:800, color: C.gold, marginBottom:4 }}>{ach.title}</h3>
+                  <p style={{ fontSize:13, color:C.textMuted, lineHeight:1.5 }}>{ach.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Shell>
   );
@@ -293,26 +405,19 @@ function LoginPage({ onNavigate, onLogin }) {
     setErr("");
     if (!form.email || !form.password) { setErr("Please fill in all fields."); return; }
     setLoading(true);
-    
     fetch('http://localhost:5001/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: form.email, password: form.password })
     })
     .then(res => res.json())
     .then(data => {
-      if (data.error) {
-        setErr(data.error);
-        setLoading(false);
-      } else {
-        onLogin(data.user);
-        onNavigate("home");
+      if (data.error) { setErr(data.error); setLoading(false); } 
+      else { 
+        onLogin(data.user, data.token); 
+        onNavigate("home"); 
       }
     })
-    .catch(err => {
-      setErr("Server connection failed. Is the backend running?");
-      setLoading(false);
-    });
+    .catch(err => { setErr("Server connection failed."); setLoading(false); });
   };
 
   return (
@@ -323,51 +428,32 @@ function LoginPage({ onNavigate, onLogin }) {
           <h1 style={{ fontSize:26, fontWeight:800, marginBottom:6 }}>Welcome back</h1>
           <p style={{ color:C.textMuted, fontSize:14 }}>Log in to continue your battle</p>
         </div>
-
         <div className="card fade-up" style={{ padding:"32px 28px", animationDelay:".1s" }}>
           <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
             <div>
               <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:8 }}>Email</label>
-              <input className="input-field" type="email" placeholder="you@example.com"
-                value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))}
-                onKeyDown={e=>e.key==="Enter"&&submit()} />
+              <input className="input-field" type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&submit()} />
             </div>
             <div>
               <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:8 }}>Password</label>
-              <input className="input-field" type="password" placeholder="••••••••"
-                value={form.password} onChange={e=>setForm(v=>({...v,password:e.target.value}))}
-                onKeyDown={e=>e.key==="Enter"&&submit()} />
+              <input className="input-field" type="password" value={form.password} onChange={e=>setForm(v=>({...v,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&submit()} />
             </div>
-
             {err && <div style={{ background:`${C.red}18`, border:`1px solid ${C.red}44`, color:C.red, borderRadius:8, padding:"10px 14px", fontSize:13 }}>{err}</div>}
-
-            <button className="btn-primary" onClick={submit}
-              style={{ width:"100%", marginTop:4, fontSize:15, opacity:loading?.7:1 }}>
-              {loading ? "Logging in…" : "Log In"}
-            </button>
+            <button className="btn-primary" onClick={submit} style={{ width:"100%", marginTop:4, fontSize:15, opacity:loading?.7:1 }}>{loading ? "Logging in…" : "Log In"}</button>
           </div>
-          <div style={{ textAlign:"center", marginTop:20, fontSize:13, color:C.textMuted }}>
-            Don't have an account? <button onClick={() => onNavigate("signup")} style={{ color:C.purpleL, fontWeight:700 }}>Sign Up</button>
-          </div>
+          <div style={{ textAlign:"center", marginTop:20, fontSize:13, color:C.textMuted }}>Don't have an account? <button onClick={() => onNavigate("signup")} style={{ color:C.purpleL, fontWeight:700 }}>Sign Up</button></div>
         </div>
       </div>
     </div>
   );
 }
 
-const AVATAR_COLORS = [
-  `linear-gradient(135deg,${C.purple},${C.cyan})`,
-  `linear-gradient(135deg,${C.green},${C.cyan})`,
-  `linear-gradient(135deg,${C.orange},${C.pink})`,
-  `linear-gradient(135deg,#f59e0b,${C.orange})`,
-  `linear-gradient(135deg,${C.pink},${C.purple})`,
-  `linear-gradient(135deg,${C.cyan},${C.green})`,
-];
+const AVATAR_COLORS = [`linear-gradient(135deg,${C.purple},${C.cyan})`,`linear-gradient(135deg,${C.green},${C.cyan})`,`linear-gradient(135deg,${C.orange},${C.pink})`,`linear-gradient(135deg,#f59e0b,${C.orange})`,`linear-gradient(135deg,${C.pink},${C.purple})`,`linear-gradient(135deg,${C.cyan},${C.green})`];
 
 function SignupPage({ onNavigate, onLogin }) {
-  const [form, setForm]       = useState({ username:"", email:"", password:"", confirm:"" });
+  const [form, setForm] = useState({ username:"", email:"", password:"", confirm:"" });
   const [avatarIdx, setAvatarIdx] = useState(0);
-  const [err, setErr]         = useState("");
+  const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = () => {
@@ -376,28 +462,19 @@ function SignupPage({ onNavigate, onLogin }) {
     if (form.password !== form.confirm) { setErr("Passwords don't match."); return; }
     if (form.password.length < 6) { setErr("Password must be at least 6 characters."); return; }
     setLoading(true);
-    
     fetch('http://localhost:5001/api/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: form.username, email: form.email, password: form.password, avatarColor: AVATAR_COLORS[avatarIdx]
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: form.username, email: form.email, password: form.password, avatarColor: AVATAR_COLORS[avatarIdx] })
     })
     .then(res => res.json())
     .then(data => {
-      if (data.error) {
-        setErr(data.error);
-        setLoading(false);
-      } else {
-        onLogin(data.user);
-        onNavigate("home");
+      if (data.error) { setErr(data.error); setLoading(false); } 
+      else { 
+        onLogin(data.user, data.token); 
+        onNavigate("home"); 
       }
     })
-    .catch(err => {
-      setErr("Server connection failed. Is the backend running?");
-      setLoading(false);
-    });
+    .catch(err => { setErr("Server connection failed."); setLoading(false); });
   };
 
   return (
@@ -408,53 +485,26 @@ function SignupPage({ onNavigate, onLogin }) {
           <h1 style={{ fontSize:26, fontWeight:800, marginBottom:6 }}>Create your account</h1>
           <p style={{ color:C.textMuted, fontSize:14 }}>Join 500,000+ players in the arena</p>
         </div>
-
         <div className="card fade-up" style={{ padding:"32px 28px", animationDelay:".1s" }}>
-          {/* Avatar picker */}
           <div style={{ marginBottom:24 }}>
             <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:12 }}>Choose Avatar Color</label>
             <div style={{ display:"flex", gap:10 }}>
               {AVATAR_COLORS.map((col, i) => (
-                <button key={i} onClick={() => setAvatarIdx(i)} style={{
-                  width:40, height:40, borderRadius:"50%", background:col,
-                  border: avatarIdx===i ? `3px solid ${C.purpleL}` : "3px solid transparent",
-                  boxShadow: avatarIdx===i ? `0 0 0 2px ${C.bg}, 0 0 0 4px ${C.purple}` : "none",
-                  transition:"all .15s",
-                }}/>
+                <button key={i} onClick={() => setAvatarIdx(i)} style={{ width:40, height:40, borderRadius:"50%", background:col, border: avatarIdx===i ? `3px solid ${C.purpleL}` : "3px solid transparent", boxShadow: avatarIdx===i ? `0 0 0 2px ${C.bg}, 0 0 0 4px ${C.purple}` : "none", transition:"all .15s" }}/>
               ))}
             </div>
-            {form.username && (
-              <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:10 }}>
-                <Avatar size={40} color={AVATAR_COLORS[avatarIdx]}>{form.username.slice(0,2).toUpperCase()}</Avatar>
-                <span style={{ fontSize:13, color:C.textMuted }}>Preview</span>
-              </div>
-            )}
           </div>
-
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            {[
-              { key:"username", label:"Username",        type:"text",     ph:"YourBattleName" },
-              { key:"email",    label:"Email",           type:"email",    ph:"you@example.com" },
-              { key:"password", label:"Password",        type:"password", ph:"Min. 6 characters" },
-              { key:"confirm",  label:"Confirm Password",type:"password", ph:"Repeat password" },
-            ].map(f => (
+            {[{ key:"username", label:"Username", type:"text" }, { key:"email", label:"Email", type:"email" }, { key:"password", label:"Password", type:"password" }, { key:"confirm", label:"Confirm Password", type:"password" }].map(f => (
               <div key={f.key}>
                 <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:8 }}>{f.label}</label>
-                <input className="input-field" type={f.type} placeholder={f.ph}
-                  value={form[f.key]} onChange={e=>setForm(v=>({...v,[f.key]:e.target.value}))}
-                  onKeyDown={e=>e.key==="Enter"&&submit()} />
+                <input className="input-field" type={f.type} value={form[f.key]} onChange={e=>setForm(v=>({...v,[f.key]:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&submit()} />
               </div>
             ))}
-
             {err && <div style={{ background:`${C.red}18`, border:`1px solid ${C.red}44`, color:C.red, borderRadius:8, padding:"10px 14px", fontSize:13 }}>{err}</div>}
-
-            <button className="btn-primary" onClick={submit} style={{ width:"100%", marginTop:4, fontSize:15, opacity:loading?.7:1 }}>
-              {loading ? "Creating account…" : "Create Account"}
-            </button>
+            <button className="btn-primary" onClick={submit} style={{ width:"100%", marginTop:4, fontSize:15, opacity:loading?.7:1 }}>{loading ? "Creating account…" : "Create Account"}</button>
           </div>
-          <div style={{ textAlign:"center", marginTop:20, fontSize:13, color:C.textMuted }}>
-            Already have an account? <button onClick={() => onNavigate("login")} style={{ color:C.purpleL, fontWeight:700 }}>Log In</button>
-          </div>
+          <div style={{ textAlign:"center", marginTop:20, fontSize:13, color:C.textMuted }}>Already have an account? <button onClick={() => onNavigate("login")} style={{ color:C.purpleL, fontWeight:700 }}>Log In</button></div>
         </div>
       </div>
     </div>
@@ -462,9 +512,87 @@ function SignupPage({ onNavigate, onLogin }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SETTINGS PAGE 
+// ══════════════════════════════════════════════════════════════════════════════
+function SettingsPage({ onNavigate, user, onUpdateUser, onLogout }) {
+  const [form, setForm] = useState({ username: user?.username || "", email: user?.email || "", avatar_url: user?.avatar_url || "" });
+  const [avatarIdx, setAvatarIdx] = useState(AVATAR_COLORS.indexOf(user?.avatarColor) !== -1 ? AVATAR_COLORS.indexOf(user?.avatarColor) : 0);
+  const [msg, setMsg] = useState(null);
+
+  const save = () => {
+    fetch('http://localhost:5001/api/user/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.user_id, username: form.username, email: form.email, avatarColor: AVATAR_COLORS[avatarIdx], avatar_url: form.avatar_url })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        setMsg({ type: "error", text: data.error });
+      } else {
+        onUpdateUser({ ...user, ...data.updatedUser });
+        setMsg({ type: "success", text: "Profile updated successfully!" });
+      }
+      setTimeout(() => setMsg(null), 3000);
+    })
+    .catch(err => console.error(err));
+  };
+
+  if (!user) return <Shell active="settings" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}><div style={{ padding:"100px", textAlign:"center" }}>Please log in.</div></Shell>;
+
+  return (
+    <Shell active="settings" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
+      <div style={{ padding:"36px 40px", maxWidth:700, margin:"0 auto" }}>
+        <div className="fade-up">
+          <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Account Settings</h2>
+          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Manage your profile identity and avatar.</p>
+        </div>
+
+        <div className="card fade-up" style={{ padding:"32px 36px", animationDelay:".1s" }}>
+          {msg && (
+            <div className="fade-in" style={{ padding: 14, background: msg.type === "success" ? `${C.green}18` : `${C.red}18`, border: `1px solid ${msg.type === "success" ? C.green : C.red}`, color: msg.type === "success" ? C.green : C.red, borderRadius: 10, marginBottom: 20, fontWeight: 700, textAlign: "center" }}>
+              {msg.text}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 20, alignItems: "center", marginBottom: 28 }}>
+             <Avatar size={72} color={AVATAR_COLORS[avatarIdx]} url={form.avatar_url}>{form.username.slice(0,2).toUpperCase()}</Avatar>
+             <div style={{ flex: 1 }}>
+                <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:8 }}>Profile Image URL (Optional)</label>
+                <input className="input-field" type="text" placeholder="Paste an image link..." value={form.avatar_url} onChange={e=>setForm(v=>({...v,avatar_url:e.target.value}))} />
+             </div>
+          </div>
+
+          <div style={{ marginBottom:28 }}>
+            <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:12 }}>Or Choose an Avatar Color</label>
+            <div style={{ display:"flex", gap:10 }}>
+              {AVATAR_COLORS.map((col,i) => (
+                <button key={i} onClick={() => { setAvatarIdx(i); setForm(v=>({...v, avatar_url: ""})); }} style={{ width:36, height:36, borderRadius:"50%", background:col, border:avatarIdx===i?`3px solid ${C.purpleL}`:"3px solid transparent", boxShadow:avatarIdx===i?`0 0 0 2px ${C.bg},0 0 0 4px ${C.purple}`:"none", transition:"all .15s" }}/>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:28 }}>
+            <div>
+              <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:8 }}>Username</label>
+              <input className="input-field" value={form.username} onChange={e=>setForm(v=>({...v,username:e.target.value}))} />
+            </div>
+            <div>
+              <label style={{ fontSize:12, fontWeight:700, color:C.textMuted, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:8 }}>Email</label>
+              <input className="input-field" type="email" value={form.email} onChange={e=>setForm(v=>({...v,email:e.target.value}))} />
+            </div>
+          </div>
+          
+          <button className="btn-primary" onClick={save} style={{ fontSize:14, padding:"14px 32px", width: "100%" }}>Save Changes</button>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // PROFILE & QUESTS
 // ══════════════════════════════════════════════════════════════════════════════
-function ProfilePage({ onNavigate, user }) {
+function ProfilePage({ onNavigate, user, onUpdateUser, onLogout }) {
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
@@ -482,37 +610,27 @@ function ProfilePage({ onNavigate, user }) {
     { icon:"🔥", label:"Best Streak",  value: user?.streak  || 0 },
     { icon:"⭐", label:"Level",        value: user?.level   || 1 },
   ];
-
   const xpProgress = user?.xp ? ((user.xp % 1000) / 1000) * 100 : 0;
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg }}>
-      <Nav active="profile" onNavigate={onNavigate} user={user} onLogout={() => onNavigate("home")} />
+    <Shell active="profile" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ maxWidth:860, margin:"0 auto", padding:"48px 32px 80px" }}>
-
         <div className="card fade-up" style={{ padding:"36px 36px", marginBottom:24, display:"flex", alignItems:"center", gap:28 }}>
-          <div style={{ position:"relative" }}>
-            <Avatar size={88} color={user?.avatarColor}>{user?.initials}</Avatar>
-            <div style={{ position:"absolute", bottom:0, right:0, width:24, height:24, borderRadius:"50%", background:C.green, border:`2px solid ${C.bgCard}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10 }}>✓</div>
-          </div>
+          <Avatar size={88} color={user?.avatarColor} url={user?.avatar_url}>{user?.initials}</Avatar>
           <div style={{ flex:1 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
-              <h1 style={{ fontSize:28, fontWeight:900 }}>{user?.username}</h1>
-              <Badge color={C.gold}>Gold III</Badge>
-            </div>
-            <div style={{ color:C.textMuted, fontSize:14, marginBottom:12 }}>{user?.email}</div>
+            <h1 style={{ fontSize:28, fontWeight:900, marginBottom:6 }}>{user?.username}</h1>
             <div style={{ display:"flex", gap:16, alignItems:"center" }}>
               <div style={{ fontSize:12, color:C.textMuted }}>Level {user?.level || 1}</div>
               <div style={{ flex:1, maxWidth:200 }}>
-                <div style={{ height:5, background:C.border, borderRadius:99, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${xpProgress}%`, background:`linear-gradient(90deg,${C.purple},${C.purpleL})`, borderRadius:99, transition:"width 1s" }}/>
-                </div>
+                <div style={{ height:5, background:C.border, borderRadius:99, overflow:"hidden" }}><div style={{ height:"100%", width:`${xpProgress}%`, background:`linear-gradient(90deg,${C.purple},${C.purpleL})` }}/></div>
               </div>
               <div style={{ fontSize:12, color:C.textMuted }}>{user?.xp || 0} XP</div>
             </div>
           </div>
+          <button className="btn-outline" onClick={() => onNavigate("settings")} style={{ fontSize:13, padding:"10px 20px" }}>
+            ⚙️ Settings
+          </button>
         </div>
-
         <div className="fade-up" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24, animationDelay:".1s" }}>
           {stats.map(s => (
             <div key={s.label} className="card" style={{ padding:"20px 20px", textAlign:"center" }}>
@@ -522,64 +640,77 @@ function ProfilePage({ onNavigate, user }) {
             </div>
           ))}
         </div>
-
         <div className="fade-up" style={{ animationDelay:".15s" }}>
           <h3 style={{ fontWeight:800, fontSize:18, marginBottom:14 }}>Recent Battles</h3>
           <div className="card" style={{ overflow:"hidden" }}>
-            {history.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: C.textMuted }}>No battles fought yet. Step into the arena!</div>
-            ) : history.map((h,i) => {
-              const isWin = h.is_win === 1;
-              const dateObj = new Date(h.played_at);
-              const dateStr = `${dateObj.getMonth()+1}/${dateObj.getDate()}`;
-              return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:16, padding:"14px 22px", borderBottom:i<history.length-1?`1px solid ${C.border}`:"none" }}>
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:isWin?C.green:C.red, flexShrink:0 }}/>
-                  <span style={{ flex:1, fontWeight:600, fontSize:14 }}>{h.category}</span>
-                  <span style={{ fontSize:12, color:C.textMuted }}>{dateStr}</span>
-                  <span style={{ fontWeight:800, color:isWin?C.green:C.red, fontSize:13, width:40, textAlign:"center" }}>{isWin?"WIN":"LOSS"}</span>
-                  <span style={{ fontWeight:700, fontSize:14, color:C.text, width:60, textAlign:"right" }}>{h.score.toLocaleString()}</span>
-                </div>
-              );
-            })}
+            {history.length === 0 ? <div style={{ padding: 24, textAlign: "center", color: C.textMuted }}>No battles fought yet. Step into the arena!</div> : history.map((h,i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:16, padding:"14px 22px", borderBottom:i<history.length-1?`1px solid ${C.border}`:"none" }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:h.is_win?C.green:C.red, flexShrink:0 }}/>
+                <span style={{ flex:1, fontWeight:600, fontSize:14 }}>{h.category}</span>
+                <span style={{ fontWeight:800, color:h.is_win?C.green:C.red, fontSize:13, width:40, textAlign:"center" }}>{h.is_win?"WIN":"LOSS"}</span>
+                <span style={{ fontWeight:700, fontSize:14, color:C.text, width:60, textAlign:"right" }}>{h.score.toLocaleString()}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
-      <Footer/>
-    </div>
+    </Shell>
   );
 }
 
-function QuestsPage({ onNavigate, user, onLogout }) {
+function QuestsPage({ onNavigate, user, onUpdateUser, onLogout }) {
   const [quests, setQuests] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchQuests = useCallback(() => {
     if (user?.user_id) {
+      setLoading(true);
       fetch(`http://localhost:5001/api/quests/${user.user_id}`)
         .then(res => res.json())
         .then(data => { setQuests(data); setLoading(false); })
         .catch(err => { console.error(err); setLoading(false); });
-    } else {
-      setLoading(false);
-    }
+    } else { setLoading(false); }
   }, [user]);
 
-  if (!user) {
-    return (
-      <Shell active="quests" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-        <div style={{ padding:"100px", textAlign:"center", color: C.textMuted }}><h2>Log in to view your Active Quests!</h2></div>
-      </Shell>
-    );
-  }
+  useEffect(() => { fetchQuests(); }, [fetchQuests]);
+
+  const handleRankUp = () => {
+    fetch('http://localhost:5001/api/quests/rankup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.user_id })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.error) {
+        onUpdateUser({ ...user, level: data.level });
+        setQuests(data.quests);
+      }
+    })
+    .catch(err => console.error(err));
+  };
+
+  if (!user) return <Shell active="quests" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}><div style={{ padding:"100px", textAlign:"center", color: C.textMuted }}><h2>Log in to view your Active Quests!</h2></div></Shell>;
+
+  const allDone = quests.length > 0 && quests.every(q => q.is_completed === 1);
 
   return (
-    <Shell active="quests" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+    <Shell active="quests" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ padding:"36px 40px", maxWidth:860, margin:"0 auto" }}>
         <div className="fade-up">
           <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Active Quests</h2>
-          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Complete these tasks in the Arena to earn bonus XP.</p>
+          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Complete these tasks in the Arena to earn bonus XP and Level Up.</p>
         </div>
+
+        {allDone && !loading && (
+          <div className="fade-in" style={{ padding: "32px", background: `linear-gradient(135deg, ${C.purple}, ${C.cyan})`, borderRadius: 16, textAlign: "center", marginBottom: 28, boxShadow: `0 10px 30px rgba(124, 58, 237, 0.4)` }}>
+            <h2 style={{ fontSize: 28, fontWeight: 900, color: "#fff", marginBottom: 10 }}>ALL QUESTS COMPLETED!</h2>
+            <p style={{ color: "rgba(255,255,255,0.8)", marginBottom: 20 }}>You are ready to advance to the next tier.</p>
+            <button onClick={handleRankUp} style={{ padding: "14px 32px", background: "#fff", color: C.purple, fontSize: 16, fontWeight: 800, borderRadius: 10, cursor: "pointer", transition: "transform 0.2s" }} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.05)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+              CLAIM RANK UP
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div style={{ color: C.textMuted, textAlign: "center", padding: "40px" }}><Dot/> Loading Quests...</div>
         ) : (
@@ -601,7 +732,6 @@ function QuestsPage({ onNavigate, user, onLogout }) {
                       <div style={{ height:"100%", width:`${prog}%`, background: isDone ? C.green : `linear-gradient(90deg,${C.purple},${C.cyan})`, borderRadius:99, transition:"width 1s ease" }}/>
                     </div>
                   </div>
-                  {isDone && <Badge color={C.green} style={{ padding:"8px 16px", fontSize:12, marginLeft: 10 }}>COMPLETED</Badge>}
                 </div>
               );
             })}
@@ -615,17 +745,10 @@ function QuestsPage({ onNavigate, user, onLogout }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // LANDING / ARENA / LEADERBOARD
 // ══════════════════════════════════════════════════════════════════════════════
-function LandingPage({ onNavigate, user, setGameMode }) {
-  const features = [
-    { col:C.green,  icon:"⚡", title:"Dynamic Difficulty",  desc:"Our AI-driven engine adapts in real-time.", wide:true },
-    { col:C.purple, icon:"♡", title:"3 Lives. No Regrets.", desc:"Mistakes have consequences.", badge:true },
-    { col:C.gold,   icon:"🏆", title:"Ranked Play",         desc:"Climb from Bronze to Legend in monthly seasons." },
-    { col:C.cyan,   icon:"👥", title:"Squad Battles",       desc:"Team up with friends for 4v4 cognitive combat." },
-    { col:C.orange, icon:"🎯", title:"Precision Scoring",   desc:"Speed and accuracy both count." },
-  ];
+function LandingPage({ onNavigate, user, onUpdateUser, setGameMode }) {
   return (
     <div style={{ minHeight:"100vh", background:C.bg, overflowX:"hidden" }}>
-      <Nav active="home" onNavigate={onNavigate} user={user} onLogout={() => {}} />
+      <Nav active="home" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={() => {}} />
       <section style={{ position:"relative", overflow:"hidden", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"88vh", padding:"100px 24px 140px", textAlign:"center" }}>
         <div style={{ position:"absolute", inset:0, pointerEvents:"none" }}>
           <div style={{ position:"absolute", width:720, height:720, borderRadius:"50%", background:"radial-gradient(circle,rgba(124,58,237,.2) 0%,transparent 65%)", top:"-15%", left:"50%", transform:"translateX(-50%)" }}/>
@@ -644,29 +767,14 @@ function LandingPage({ onNavigate, user, setGameMode }) {
           <button className="btn-outline" onClick={() => onNavigate("leaderboard")} style={{ fontSize:16, padding:"16px 38px" }}>View Leaderboard</button>
         </div>
       </section>
-      <section style={{ maxWidth:1120, margin:"0 auto", padding:"0 32px 80px" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:20, marginBottom:20 }}>{features.slice(0,2).map((f,i) => <FCard key={i} f={f}/>)}</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:20 }}>{features.slice(2).map((f,i) => <FCard key={i} f={f}/>)}</div>
-      </section>
       <Footer/>
     </div>
   );
 }
 
-function FCard({ f }) {
-  const [h,setH]=useState(false);
+function ArenaPage({ onNavigate, user, onUpdateUser, onLogout, categories, setActiveCategory, setGameMode }) {
   return (
-    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{ background:h?C.bgCardAlt:C.bgCard, border:`1px solid ${h?f.col+"44":C.border}`, borderRadius:14, padding:"28px 26px", position:"relative", transition:"all .2s" }}>
-      <div style={{ width:42,height:42,borderRadius:11,background:`${f.col}1e`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,marginBottom:16 }}>{f.icon}</div>
-      <h3 style={{ fontSize:17,fontWeight:800,marginBottom:8 }}>{f.title}</h3>
-      <p style={{ fontSize:13,color:C.textMuted,lineHeight:1.65 }}>{f.desc}</p>
-    </div>
-  );
-}
-
-function ArenaPage({ onNavigate, user, onLogout, categories, setActiveCategory, setGameMode }) {
-  return (
-    <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+    <Shell active="arena" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ padding:"36px 40px", maxWidth:1060, margin:"0 auto" }}>
         <div className="fade-up">
           <div style={{ fontSize:11, fontWeight:800, letterSpacing:2, textTransform:"uppercase", color:C.textMuted, marginBottom:6 }}>Choose Your Arena</div>
@@ -678,11 +786,13 @@ function ArenaPage({ onNavigate, user, onLogout, categories, setActiveCategory, 
             const colors = [C.cyan, C.green, C.purple, C.orange, C.pink, C.gold];
             const icons = ["🌍", "📜", "🔬", "💻", "🎬", "📚", "🎵", "🏆", "🧠"];
             const mappedCat = { id: cat.id, title: cat.name, desc: `Master your knowledge in ${cat.name}.`, color: colors[i % colors.length], icon: icons[i % icons.length] };
-            return <CatCard key={cat.id} cat={mappedCat} onClick={() => {
-              setGameMode("standard");
-              setActiveCategory(cat.id);
-              onNavigate("battle");
-            }}/>
+            return (
+              <div key={cat.id} onClick={() => { setGameMode("standard"); setActiveCategory(cat.id); onNavigate("battle"); }} style={{ background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:14, padding:"36px 28px", cursor:"pointer", transition:"all .22s" }}>
+                <div style={{ width:52,height:52,borderRadius:14,background:`${mappedCat.color}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,marginBottom:20 }}>{mappedCat.icon}</div>
+                <h3 style={{ fontSize:18,fontWeight:800,marginBottom:10 }}>{mappedCat.title}</h3>
+                <div style={{ fontSize:13,fontWeight:700,color:C.textMuted }}>Enter Arena →</div>
+              </div>
+            );
           })}
         </div>
       </div>
@@ -690,52 +800,59 @@ function ArenaPage({ onNavigate, user, onLogout, categories, setActiveCategory, 
   );
 }
 
-function CatCard({ cat, onClick }) {
-  const [h,setH]=useState(false);
-  return (
-    <div onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{ background:h?C.bgCardAlt:C.bgCard, border:`1px solid ${h?cat.color+"55":C.border}`, borderRadius:14, padding:"36px 28px", cursor:"pointer", transition:"all .22s", transform:h?"translateY(-4px)":"none", boxShadow:h?"0 16px 40px rgba(0,0,0,.4)":"none" }}>
-      <div style={{ width:52,height:52,borderRadius:14,background:`${cat.color}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,marginBottom:20 }}>{cat.icon}</div>
-      <h3 style={{ fontSize:18,fontWeight:800,marginBottom:10 }}>{cat.title}</h3>
-      <p style={{ fontSize:13,color:C.textMuted,lineHeight:1.65,marginBottom:24 }}>{cat.desc}</p>
-      <div style={{ fontSize:13,fontWeight:700,color:h?cat.color:C.textMuted,transition:"color .2s" }}>Enter Arena →</div>
-    </div>
-  );
-}
-
-function LeaderboardPage({ onNavigate, user, onLogout }) {
-  const [tab,setTab]=useState("global");
+// ══════════════════════════════════════════════════════════════════════════════
+// LEADERBOARD PAGE
+// ══════════════════════════════════════════════════════════════════════════════
+function LeaderboardPage({ onNavigate, user, onUpdateUser, onLogout }) {
+  const [tab,setTab] = useState("university");
   const [lbData, setLbData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch('http://localhost:5001/api/scores')
+  const fetchLeaderboard = useCallback(() => {
+    setLoading(true);
+    const endpoint = tab === "weekly" ? "http://localhost:5001/api/scores/weekly" : "http://localhost:5001/api/scores";
+    fetch(endpoint)
       .then(res => res.json())
       .then(data => {
         const formatted = data.map((item, index) => ({
-          rank: index + 1, name: item.username, score: item.score, streak: Math.round(item.accuracy / 10), 
-          avatar: "🏆", badge: index < 3 ? "Legend" : "Gold", badgeC: index < 3 ? "#f59e0b" : C.gold, you: user && item.username === user.username
+          rank: index + 1, 
+          name: item.username, 
+          score: item.score, 
+          streak: Math.round((item.accuracy||0) / 10), 
+          avatarColor: item.avatarColor, 
+          avatar_url: item.avatar_url, 
+          initials: item.username ? item.username.slice(0, 2).toUpperCase() : "??",
+          badge: index < 3 ? "Legend" : "Gold", 
+          badgeC: index < 3 ? "#f59e0b" : C.gold, 
+          you: user && item.username === user.username
         }));
         setLbData(formatted);
         setLoading(false);
       })
       .catch(err => { console.error(err); setLoading(false); });
-  }, [user]);
+  }, [tab, user]);
+
+  useEffect(() => { fetchLeaderboard(); }, [fetchLeaderboard]);
 
   const podiumIndices = [1, 0, 2];
   const medals = ["🥈", "🥇", "🥉"];
 
   return (
-    <Shell active="leaderboard" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+    <Shell active="leaderboard" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ padding:"36px 40px", maxWidth:860, margin:"0 auto" }}>
-        <div className="fade-up">
-          <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Arena Rankings</h2>
-          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Season 3 — Live Database Rankings</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div className="fade-up">
+            <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Arena Rankings</h2>
+            <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Season 3 — Live Database Rankings</p>
+          </div>
         </div>
+
         <div className="fade-up" style={{ display:"flex",gap:4,marginBottom:28,background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:4,width:"fit-content",animationDelay:".08s" }}>
-          {["global","friends","weekly"].map(t=>(<button key={t} onClick={()=>setTab(t)} style={{ padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,background:tab===t?C.purple:"none",color:tab===t?"#fff":C.textMuted,transition:"all .2s" }}>{t}</button>))}
+          {["university","weekly"].map(t=>(<button key={t} onClick={()=>setTab(t)} style={{ padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,background:tab===t?C.purple:"none",color:tab===t?"#fff":C.textMuted,transition:"all .2s" }}>{t}</button>))}
         </div>
+        
         {loading ? (
-          <div style={{ color: C.textMuted, textAlign: "center", padding: "40px" }}><Dot/> Loading Database Scores...</div>
+          <div style={{ color: C.textMuted, textAlign: "center", padding: "40px" }}><Dot/> Loading Scores...</div>
         ) : (
           <>
             <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"1fr 1.12fr 1fr",gap:16,marginBottom:28,animationDelay:".14s", alignItems: "end" }}>
@@ -746,7 +863,9 @@ function LeaderboardPage({ onNavigate, user, onLogout }) {
                 return (
                   <div key={p.name} style={{ background:C.bgCard,border:`1px solid ${isFirst?C.gold:C.border}`,borderRadius:14,padding:"24px 20px",textAlign:"center",transform:isFirst?"translateY(-16px)":"none",boxShadow:isFirst?"0 0 32px rgba(245,158,11,.18)":"none" }}>
                     <div style={{ fontSize:28,marginBottom:8 }}>{medals[dataIndex]}</div>
-                    <div style={{ width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,margin:"0 auto 10px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{p.avatar}</div>
+                    <div style={{ display:"flex", justifyContent:"center", marginBottom:10 }}>
+                      <Avatar size={52} color={p.avatarColor} url={p.avatar_url}>{p.initials}</Avatar>
+                    </div>
                     <div style={{ fontWeight:800,fontSize:15,marginBottom:4 }}>{p.name}</div>
                     <div style={{ fontSize:11,color:p.badgeC,fontWeight:700,marginBottom:8 }}>{p.badge}</div>
                     <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:isFirst?C.gold:C.text }}>{p.score.toLocaleString()}</div>
@@ -754,18 +873,20 @@ function LeaderboardPage({ onNavigate, user, onLogout }) {
                 )
               })}
             </div>
+            
             <div className="card fade-up" style={{ overflow:"hidden",animationDelay:".22s" }}>
               {lbData.map((p,i)=>(
                 <div key={i} style={{ display:"flex",alignItems:"center",gap:14,padding:"14px 22px",borderBottom:i<lbData.length-1?`1px solid ${C.border}`:"none",background:p.you?`${C.purple}12`:"none",transition:"background .15s" }}
                   onMouseEnter={e=>{if(!p.you)e.currentTarget.style.background=C.bgCardAlt;}}
                   onMouseLeave={e=>{if(!p.you)e.currentTarget.style.background="none";}}>
+                  
                   <span style={{ width:24,textAlign:"center",fontSize:13,fontWeight:800,color:p.rank<=3?C.gold:C.textDim }}>{p.rank}</span>
-                  <div style={{ width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{p.avatar}</div>
+                  
+                  <Avatar size={36} color={p.avatarColor} url={p.avatar_url}>{p.initials}</Avatar>
+                  
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700,fontSize:14 }}>{p.name}{p.you&&<span style={{ fontSize:11,color:C.green,marginLeft:6 }}>(You)</span>}</div>
-                    <div style={{ fontSize:11,color:p.badgeC }}>{p.badge}</div>
                   </div>
-                  <div style={{ fontSize:11,color:C.green,marginRight:12 }}>🔥 {p.streak}</div>
                   <div style={{ fontWeight:800,fontSize:15,color:p.rank===1?C.gold:C.text }}>{p.score.toLocaleString()}</div>
                 </div>
               ))}
@@ -780,46 +901,31 @@ function LeaderboardPage({ onNavigate, user, onLogout }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TRAINING PAGE 
 // ══════════════════════════════════════════════════════════════════════════════
-function ModeCard({ m, onNavigate, setGameMode, categories, setActiveCategory }) {
-  const [h, setH] = useState(false);
-  const handleStart = () => {
-    setGameMode(m.tag); 
-    if (categories && categories.length > 0) {
-      const randomCat = categories[Math.floor(Math.random() * categories.length)].id;
-      setActiveCategory(randomCat);
-    }
-    onNavigate("battle");
-  };
-
-  return (
-    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} onClick={handleStart}
-      style={{ background:C.bgCard,border:`1px solid ${h?m.color+"55":C.border}`,borderRadius:14,padding:"26px 24px",cursor:"pointer",transition:"all .2s",transform:h?"translateY(-3px)":"none" }}>
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16 }}>
-        <div style={{ width:46,height:46,borderRadius:12,background:`${m.color}1e`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{m.icon}</div>
-        <Badge color={m.color} style={{ fontSize:10 }}>{m.tag}</Badge>
-      </div>
-      <h3 style={{ fontSize:17,fontWeight:800,marginBottom:8 }}>{m.title}</h3>
-      <p style={{ fontSize:13,color:C.textMuted,lineHeight:1.6,marginBottom:18 }}>{m.desc}</p>
-      <div style={{ fontSize:13,fontWeight:700,color:h?m.color:C.textMuted,transition:"color .2s" }}>Start Training →</div>
-    </div>
-  );
-}
-
-function TrainingPage({ onNavigate, user, onLogout, setGameMode, categories, setActiveCategory }) {
+function TrainingPage({ onNavigate, user, onUpdateUser, onLogout, setGameMode, categories, setActiveCategory }) {
   const modes=[
     { icon:"⚡",title:"Speed Round",    desc:"15 questions, 8 seconds each. Pure reflex.",          color:C.orange, tag:"FAST"  },
     { icon:"🧠",title:"Deep Think",     desc:"No timer — perfect for learning.",                     color:C.cyan,   tag:"CHILL" },
     { icon:"🎯",title:"Precision Mode", desc:"One wrong answer ends it. 1 Life.",                   color:C.pink,   tag:"HARD"  },
   ];
   return (
-    <Shell active="training" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+    <Shell active="training" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ padding:"36px 40px",maxWidth:920, margin:"0 auto" }}>
         <div className="fade-up">
           <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Training Centre</h2>
           <p style={{ color:C.textMuted,fontSize:14,marginBottom:32 }}>Sharpen your skills with rule-bending game modes.</p>
         </div>
         <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:28,animationDelay:".1s" }}>
-          {modes.map((m,idx)=> <ModeCard key={idx} m={m} onNavigate={onNavigate} setGameMode={setGameMode} categories={categories} setActiveCategory={setActiveCategory}/> )}
+          {modes.map((m,idx)=> (
+            <div key={idx} onClick={() => { setGameMode(m.tag); if (categories?.length > 0) setActiveCategory(categories[Math.floor(Math.random() * categories.length)].id); onNavigate("battle"); }}
+              style={{ background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"26px 24px",cursor:"pointer",transition:"all .2s" }}>
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16 }}>
+                <div style={{ width:46,height:46,borderRadius:12,background:`${m.color}1e`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{m.icon}</div>
+                <Badge color={m.color} style={{ fontSize:10 }}>{m.tag}</Badge>
+              </div>
+              <h3 style={{ fontSize:17,fontWeight:800,marginBottom:8 }}>{m.title}</h3>
+              <p style={{ fontSize:13,color:C.textMuted,lineHeight:1.6,marginBottom:18 }}>{m.desc}</p>
+            </div>
+          ))}
         </div>
       </div>
     </Shell>
@@ -827,7 +933,7 @@ function TrainingPage({ onNavigate, user, onLogout, setGameMode, categories, set
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// BATTLE PAGE ── UPDATED: Working Power-ups ──
+// BATTLE PAGE 
 // ══════════════════════════════════════════════════════════════════════════════
 const AUTO_ADVANCE_DELAY = 1200; 
 
@@ -855,28 +961,17 @@ function BattlePage(props) {
   const [shk,setShk]=useState(false);
   const [feedback, setFeedback] = useState(null);
   
-  // Power-up States
   const [eliminatedOpts, setEliminatedOpts] = useState([]);
   const [pollData, setPollData] = useState(null);
   const [buyPrompt, setBuyPrompt] = useState(null);
 
   const q=liveQuestions[qi];
 
-  const decodeHtml = (html) => {
-    const txt = document.createElement("textarea");
-    txt.innerHTML = html;
-    return txt.value;
-  };
+  const decodeHtml = (html) => { const txt = document.createElement("textarea"); txt.innerHTML = html; return txt.value; };
 
   useEffect(() => {
-    if (!activeCategory) {
-      setLiveQuestions([]);
-      setLoading(false);
-      return;
-    }
-    setQi(0);
-    setLoading(true);
-    setApiError(null);
+    if (!activeCategory) { setLiveQuestions([]); setLoading(false); return; }
+    setQi(0); setLoading(true); setApiError(null);
 
     let fetchUrl = `http://localhost:5001/api/questions/${activeCategory}`;
     if (sessionToken) fetchUrl += `?token=${sessionToken}`;
@@ -892,16 +987,9 @@ function BattlePage(props) {
       })
       .then(data => {
         if (!data || data.length === 0) throw new Error("No questions available for this category right now.");
-        
         const formatted = data.map(item => {
           const options = [...item.incorrect_answers, item.correct_answer].sort(() => Math.random() - 0.5);
-          return {
-            cat: item.category,
-            q: decodeHtml(item.question),
-            opts: options.map(decodeHtml),
-            ans: options.indexOf(item.correct_answer),
-            diff: item.difficulty 
-          };
+          return { cat: item.category, q: decodeHtml(item.question), opts: options.map(decodeHtml), ans: options.indexOf(item.correct_answer), diff: item.difficulty };
         });
         setLiveQuestions(formatted);
         setLoading(false);
@@ -913,21 +1001,13 @@ function BattlePage(props) {
       });
   }, [activeCategory, sessionToken]);
 
-  useEffect(()=>{ 
-    setSel(null); 
-    setDone(false); 
-    setTimer(START_TIME); 
-    setFeedback(null); 
-    setEliminatedOpts([]); 
-    setPollData(null); 
-  }, [qi, START_TIME]);
+  useEffect(()=>{ setSel(null); setDone(false); setTimer(START_TIME); setFeedback(null); setEliminatedOpts([]); setPollData(null); }, [qi, START_TIME]);
 
   const handlePick = useCallback((i) => {
     if(done || !q || eliminatedOpts.includes(i)) return;
     setSel(i); setDone(true);
     if(i===q.ans){
-      const newStreak = streak + 1;
-      setStreak(newStreak);
+      const newStreak = streak + 1; setStreak(newStreak);
       let basePts = q.diff === 'hard' ? 300 : q.diff === 'medium' ? 200 : 100;
       let speedBonus = (!isChill && timer >= 10) ? basePts : 0; 
       let totalBase = basePts + speedBonus;
@@ -954,16 +1034,8 @@ function BattlePage(props) {
     if(!done) return;
     const t=setTimeout(()=>{
       if(qi>=liveQuestions.length-1 || lives <= 0){ 
-        const attempted = qi + 1;
-        const wrongCount = START_LIVES - lives;
-        const exactCorrect = Math.max(0, attempted - wrongCount);
-
-        setLastBattleStats({
-          score: pts,
-          accuracy: attempted > 0 ? Math.round((exactCorrect / attempted) * 100) : 0,
-          correctAnswers: exactCorrect,
-          category: liveQuestions[0]?.cat || "Mixed Arena"
-        });
+        const attempted = qi + 1; const wrongCount = START_LIVES - lives; const exactCorrect = Math.max(0, attempted - wrongCount);
+        setLastBattleStats({ score: pts, accuracy: attempted > 0 ? Math.round((exactCorrect / attempted) * 100) : 0, correctAnswers: exactCorrect, category: liveQuestions[0]?.cat || "Mixed Arena" });
         onNavigate("results"); 
       }
       else{ setQi(v=>v+1); }
@@ -971,40 +1043,30 @@ function BattlePage(props) {
     return()=>clearTimeout(t);
   },[done, qi, liveQuestions.length, lives, onNavigate, pts, setLastBattleStats, START_LIVES]);
 
-  // ── POWER-UP LOGIC ──
   const triggerPowerUp = (item) => {
     if (!user) return;
-    
     const count = item === '5050' ? user.power_5050 : item === 'time' ? user.power_time : user.power_poll;
-    if (count > 0) {
-      applyPowerUpEffect(item, false);
-    } else {
-      setBuyPrompt(item);
-    }
+    if (count > 0) applyPowerUpEffect(item, false);
+    else setBuyPrompt(item);
   };
 
   const applyPowerUpEffect = (item, paidWithCoins) => {
     fetch('http://localhost:5001/api/powerup/use', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: user.user_id, item, deductCoins: paidWithCoins })
     })
     .then(res => res.json())
     .then(data => {
-      if (data.error) {
-        alert(data.error); 
-      } else {
+      if (data.error) { alert(data.error); } 
+      else {
         onUpdateUser({ ...user, ...data.updatedUser });
         setBuyPrompt(null);
-        
-        // Apply local effect
         if (item === '5050') {
           let incorrectIds = q.opts.map((_, i) => i).filter(i => i !== q.ans);
           incorrectIds = incorrectIds.sort(() => Math.random() - 0.5).slice(0, 2);
           setEliminatedOpts(incorrectIds);
-        } else if (item === 'time') {
-          setTimer(v => v + 10);
-        } else if (item === 'poll') {
+        } else if (item === 'time') { setTimer(v => v + 10); } 
+        else if (item === 'poll') {
           const fakePoll = q.opts.map((_, i) => i === q.ans ? Math.floor(Math.random() * 20) + 60 : Math.floor(Math.random() * 15));
           setPollData(fakePoll);
         }
@@ -1012,28 +1074,8 @@ function BattlePage(props) {
     });
   };
 
-  if (apiError) {
-    return (
-      <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-        <div style={{ padding:"80px 40px", textAlign:"center", maxWidth: 600, margin: "0 auto" }}>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>⏱️</div>
-          <h2 style={{ color: C.red, fontSize: 24, fontWeight: "bold", marginBottom: 12 }}>{apiError}</h2>
-          <button className="btn-primary" onClick={() => onNavigate("arena")}>Go Back</button>
-        </div>
-      </Shell>
-    );
-  }
-
-  if (loading) {
-    return (
-      <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-        <div style={{ padding:"100px", textAlign:"center", color: C.purpleL, fontSize: 20, fontWeight: "bold", letterSpacing: 2 }}>
-          <Dot/> GENERATING ARENA...
-        </div>
-      </Shell>
-    );
-  }
-
+  if (apiError) return <Shell active="arena" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}><div style={{ padding:"80px 40px", textAlign:"center", maxWidth: 600, margin: "0 auto" }}><div style={{ fontSize: 40, marginBottom: 16 }}>⏱️</div><h2 style={{ color: C.red, fontSize: 24, fontWeight: "bold", marginBottom: 12 }}>{apiError}</h2><button className="btn-primary" onClick={() => onNavigate("arena")}>Go Back</button></div></Shell>;
+  if (loading) return <Shell active="arena" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}><div style={{ padding:"100px", textAlign:"center", color: C.purpleL, fontSize: 20, fontWeight: "bold", letterSpacing: 2 }}><Dot/> GENERATING ARENA...</div></Shell>;
   if (!q) return null;
 
   const frac = isChill ? 1 : timer/TOTAL_TIME;
@@ -1042,10 +1084,8 @@ function BattlePage(props) {
   const circ=170;
 
   return (
-    <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+    <Shell active="arena" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ padding:"24px 40px", maxWidth:800, margin:"0 auto", position: "relative" }}>
-
-        {/* Mid-Game Purchase Prompt Overlay */}
         {buyPrompt && (
           <div style={{ position: "absolute", inset: -20, background: "rgba(8,12,24,0.8)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16 }}>
             <div className="card fade-in" style={{ padding: "30px", textAlign: "center", maxWidth: 300 }}>
@@ -1072,19 +1112,15 @@ function BattlePage(props) {
               {[...Array(START_LIVES)].map((_,i)=><span key={i} style={{ fontSize:16,filter:i>=lives?"grayscale(1) opacity(.3)":"none",transition:"filter .3s",animation:i<lives?"heartbeat 2s infinite":"none" }}>❤️</span>)}
             </div>
           </div>
-
           <div style={{ textAlign:"center" }}>
             <div style={{ color:C.green,fontWeight:800,fontSize:12,letterSpacing:1 }}>🔥 {streak} STREAK</div>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:38,fontWeight:900,lineHeight:1 }}>{pts.toLocaleString()}</div>
             <div style={{ fontSize:10,color:C.textMuted,letterSpacing:1 }}>POINTS</div>
           </div>
-
           <div style={{ position:"relative",width:66,height:66 }}>
             <svg width={66} height={66} style={{ transform:"rotate(-90deg)" }}>
               <circle cx={33} cy={33} r={27} fill="none" stroke={C.border} strokeWidth={5}/>
-              <circle cx={33} cy={33} r={27} fill="none" stroke={tc} strokeWidth={5}
-                strokeDasharray={circ} strokeDashoffset={circ*(1-frac)} strokeLinecap="round"
-                style={{ transition:"stroke-dashoffset .9s linear,stroke .3s" }}/>
+              <circle cx={33} cy={33} r={27} fill="none" stroke={tc} strokeWidth={5} strokeDasharray={circ} strokeDashoffset={circ*(1-frac)} strokeLinecap="round" style={{ transition:"stroke-dashoffset .9s linear,stroke .3s" }}/>
             </svg>
             <div style={{ position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
               {isChill ? <span style={{ fontSize:26,fontWeight:900,color:tc }}>∞</span> : <><span style={{ fontSize:18,fontWeight:900,color:tc }}>{timer}</span><span style={{ fontSize:8,color:C.textMuted }}>SEC</span></>}
@@ -1092,22 +1128,10 @@ function BattlePage(props) {
           </div>
         </div>
 
-        <div style={{ display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:C.textMuted,marginBottom:6,letterSpacing:1 }}>
-          <span>QUESTION {qi+1} OF {liveQuestions.length}</span>
-          <span>{Math.round(prog)}% COMPLETE</span>
-        </div>
-        <div style={{ height:6,background:C.border,borderRadius:99,marginBottom:22,overflow:"hidden" }}>
-          <div style={{ height:"100%",width:`${prog}%`,background:`linear-gradient(90deg,${C.purple},${C.green})`,borderRadius:99,transition:"width .4s" }}/>
-        </div>
+        <div style={{ height:6,background:C.border,borderRadius:99,marginBottom:22,overflow:"hidden" }}><div style={{ height:"100%",width:`${prog}%`,background:`linear-gradient(90deg,${C.purple},${C.green})`,borderRadius:99,transition:"width .4s" }}/></div>
 
         {feedback && (
-          <div className="fade-in" style={{
-            marginBottom:14, borderRadius:10, padding:"12px 20px",
-            background: feedback==="wrong" ? `${C.red}18` : `${C.green}18`,
-            border:`1px solid ${feedback==="wrong"?C.red+"44":C.green+"44"}`,
-            color: feedback==="wrong" ? C.red : C.green,
-            fontWeight:700, fontSize:14, display:"flex", alignItems:"center", gap:10,
-          }}>
+          <div className="fade-in" style={{ marginBottom:14, borderRadius:10, padding:"12px 20px", background: feedback==="wrong" ? `${C.red}18` : `${C.green}18`, border:`1px solid ${feedback==="wrong"?C.red+"44":C.green+"44"}`, color: feedback==="wrong" ? C.red : C.green, fontWeight:700, fontSize:14, display:"flex", alignItems:"center", gap:10 }}>
             {feedback==="wrong" ? "❌ Wrong! Moving on…" : feedback==="streak" ? "🔥 2x STREAK BONUS! Correct!" : "✅ Correct!"}
             <span style={{ marginLeft:"auto", fontSize:12, opacity:.7 }}>Next question in {AUTO_ADVANCE_DELAY/1000}s…</span>
           </div>
@@ -1116,7 +1140,6 @@ function BattlePage(props) {
         <div className="card slide-in" key={qi} style={{ padding:"32px 36px", marginBottom:14, animation:shk?"shake .5s ease":"none" }}>
           <Badge color={C.cyan} style={{ marginBottom:20 }}>{q.cat}</Badge>
           <h2 style={{ fontSize:20,fontWeight:800,lineHeight:1.55,marginBottom:28 }}>{q.q}</h2>
-
           <div style={{ display:"flex",flexDirection:"column",gap:11 }}>
             {q.opts.map((opt,i)=>{
               let bg=C.bgCardAlt, brd=C.border, col=C.text, fw=600, op=1;
@@ -1127,18 +1150,8 @@ function BattlePage(props) {
               }
               return (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, opacity: op, transition: "opacity .3s" }}>
-                  <button onClick={()=>handlePick(i)} style={{
-                    flex: 1, display:"flex",alignItems:"center",gap:14,
-                    background:bg,border:`1.5px solid ${brd}`,borderRadius:11,
-                    padding:"14px 18px",color:col,fontSize:14,fontWeight:fw,textAlign:"left",
-                    transition:"all .15s", cursor:(done || op<1)?"default":"pointer",
-                    animation:done&&i===q.ans?"correctPop .3s ease":"none",
-                  }}
-                  onMouseEnter={e=>{ if(!done && op===1){ e.currentTarget.style.background=`${C.purple}18`; e.currentTarget.style.borderColor=C.purple; }}}
-                  onMouseLeave={e=>{ if(!done && op===1){ e.currentTarget.style.background=bg; e.currentTarget.style.borderColor=brd; }}}>
-                    <span style={{ width:28,height:28,borderRadius:7,background:`${C.border}cc`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:C.textMuted,flexShrink:0 }}>
-                      {String.fromCharCode(65+i)}
-                    </span>
+                  <button onClick={()=>handlePick(i)} style={{ flex: 1, display:"flex",alignItems:"center",gap:14, background:bg,border:`1.5px solid ${brd}`,borderRadius:11, padding:"14px 18px",color:col,fontSize:14,fontWeight:fw,textAlign:"left", transition:"all .15s", cursor:(done || op<1)?"default":"pointer" }}>
+                    <span style={{ width:28,height:28,borderRadius:7,background:`${C.border}cc`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:C.textMuted,flexShrink:0 }}>{String.fromCharCode(65+i)}</span>
                     {opt}
                     {done&&i===q.ans&&<span style={{ marginLeft:"auto" }}>✅</span>}
                     {done&&i===sel&&i!==q.ans&&<span style={{ marginLeft:"auto" }}>❌</span>}
@@ -1150,16 +1163,13 @@ function BattlePage(props) {
           </div>
         </div>
 
-        {/* ── Working Power-up Buttons ── */}
         <div style={{ display:"flex",gap:10,justifyContent:"center" }}>
           {[
             { id: '5050', ic:"👁", lb:"50/50", cnt: user?.power_5050||0, disabled: eliminatedOpts.length > 0 },
             { id: 'time', ic:"⏱", lb:"+10 SEC", cnt: user?.power_time||0, disabled: false },
             { id: 'poll', ic:"👥", lb:"POLL", cnt: user?.power_poll||0, disabled: pollData !== null }
           ].map((p)=>(
-            <button key={p.id} onClick={() => { if(!done && !p.disabled) triggerPowerUp(p.id) }} style={{ position: "relative", background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 20px",color:C.textMuted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,fontSize:18,transition:"all .15s", opacity: (done || p.disabled) ? 0.4 : 1, cursor: (done || p.disabled) ? "default" : "pointer" }}
-              onMouseEnter={e=>{ if(!done && !p.disabled){e.currentTarget.style.borderColor=C.purple;e.currentTarget.style.color=C.purpleL;} }}
-              onMouseLeave={e=>{ if(!done && !p.disabled){e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.textMuted;} }}>
+            <button key={p.id} onClick={() => { if(!done && !p.disabled) triggerPowerUp(p.id) }} style={{ position: "relative", background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 20px",color:C.textMuted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,fontSize:18,transition:"all .15s", opacity: (done || p.disabled) ? 0.4 : 1, cursor: (done || p.disabled) ? "default" : "pointer" }}>
               <div style={{ position: "absolute", top: -6, right: -6, background: p.cnt > 0 ? C.purpleL : C.red, color: "#fff", fontSize: 10, fontWeight: 800, width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>{p.cnt}</div>
               {p.ic}<span style={{ fontSize:10,fontWeight:700,letterSpacing:1 }}>{p.lb}</span>
             </button>
@@ -1173,45 +1183,33 @@ function BattlePage(props) {
 // ══════════════════════════════════════════════════════════════════════════════
 // RESULTS PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function ResultsPage({ onNavigate, user, onLogout, onUpdateUser, lastBattleStats }) {
+function ResultsPage({ onNavigate, user, onUpdateUser, onLogout, lastBattleStats }) {
   const stats = lastBattleStats || { score: 0, accuracy: 0, category: "Unknown" };
   const posted = useRef(false);
 
   const [xpEarned, setXpEarned] = useState(0);
-  const [coinsEarned, setCoinsEarned] = useState(0); // ── NEW
+  const [coinsEarned, setCoinsEarned] = useState(0); 
   const xpProgress = user?.xp ? ((user.xp % 1000) / 1000) * 100 : 0;
 
   useEffect(() => {
     if (user && stats.score > 0 && !posted.current) {
       posted.current = true;
-
       fetch('http://localhost:5001/api/match', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.user_id,
-          username: user.username,
-          score: stats.score,
-          accuracy: stats.accuracy,
-          correctAnswers: stats.correctAnswers, 
-          category: stats.category
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.user_id, username: user.username, score: stats.score, accuracy: stats.accuracy, correctAnswers: stats.correctAnswers, category: stats.category })
       })
       .then(res => res.json())
       .then(data => {
         setXpEarned(data.xp_earned);
         setCoinsEarned(data.coins_earned);
-        if (data.updatedUser) {
-          onUpdateUser({ ...user, ...data.updatedUser });
-        }
+        if (data.updatedUser) onUpdateUser({ ...user, ...data.updatedUser });
       })
       .catch(err => console.error("Error processing match:", err));
     }
   }, [user, stats, onUpdateUser]);
 
   return (
-    <div style={{ minHeight:"100vh",background:C.bg }}>
-      <Nav active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}/>
+    <Shell active="arena" onNavigate={onNavigate} user={user} onUpdateUser={onUpdateUser} onLogout={onLogout}>
       <div style={{ maxWidth:780,margin:"0 auto",padding:"60px 24px 80px" }}>
         <div className="fade-up" style={{ textAlign:"center",marginBottom:44 }}>
           <Badge color={C.green} style={{ marginBottom:22 }}>Battle Concluded</Badge>
@@ -1245,8 +1243,7 @@ function ResultsPage({ onNavigate, user, onLogout, onUpdateUser, lastBattleStats
           <button className="btn-outline" onClick={()=>onNavigate("arena")} style={{ fontSize:16,padding:"16px 40px" }}>← Back to Arena</button>
         </div>
       </div>
-      <Footer/>
-    </div>
+    </Shell>
   );
 }
 
@@ -1271,25 +1268,47 @@ export default function App() {
 
     fetch('http://localhost:5001/api/token')
       .then((res) => res.json())
-      .then((data) => {
-         if(data.token) setSessionToken(data.token);
-      })
+      .then((data) => { if(data.token) setSessionToken(data.token); })
       .catch(err => console.error("Token fetch failed:", err));
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('bb_token');
+    if (token) {
+      fetch('http://localhost:5001/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.user) setUser(data.user);
+        else localStorage.removeItem('bb_token');
+      })
+      .catch(() => localStorage.removeItem('bb_token'));
+    }
   }, []);
 
   const nav = useCallback((dest) => {
     const map = {
       home:"home", arena:"arena", leaderboard:"leaderboard", training:"training",
-      battle:"battle", results:"results", shop:"shop", // <-- ADDED SHOP MAP
+      battle:"battle", results:"results", shop:"shop", settings:"settings",
       login:"login", signup:"signup", profile:"profile",
-      quests:"quests", achievements:"achievements", settings:"profile",
+      quests:"quests", achievements:"achievements",
     };
     setPage(map[dest] ?? dest);
     window.scrollTo(0,0);
   }, []);
 
-  const login  = useCallback((u) => setUser(u), []);
-  const logout = useCallback(() => { setUser(null); setPage("home"); }, []);
+  const login = useCallback((u, token) => { 
+    setUser(u); 
+    if (token) localStorage.setItem('bb_token', token);
+  }, []);
+
+  const logout = useCallback(() => { 
+    setUser(null); 
+    localStorage.removeItem('bb_token');
+    setPage("home"); 
+  }, []);
+
   const updateUser = useCallback((u) => setUser(u), []);
 
   const shared = { 
@@ -1307,8 +1326,10 @@ export default function App() {
         {page==="login"       && <LoginPage       onNavigate={nav} onLogin={login}/>}
         {page==="signup"      && <SignupPage      onNavigate={nav} onLogin={login}/>}
         {page==="profile"     && <ProfilePage     {...shared}/>}
+        {page==="settings"    && <SettingsPage    {...shared}/>}
         {page==="quests"      && <QuestsPage      {...shared}/>}
         {page==="shop"        && <ShopPage        {...shared}/>}
+        {page==="achievements"&& <AchievementsPage {...shared}/>}
         {page==="arena"       && <ArenaPage       {...shared}/>}
         {page==="leaderboard" && <LeaderboardPage {...shared}/>}
         {page==="training"    && <TrainingPage    {...shared}/>}
