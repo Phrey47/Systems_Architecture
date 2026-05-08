@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
@@ -46,7 +46,6 @@ const G = `
   .input-field::placeholder{color:${C.textDim};}
 `;
 
-// ─── Atoms ────────────────────────────────────────────────────────────────────
 const Badge = ({ children, color = C.green, style: s = {} }) => (
   <span style={{ display:"inline-flex", alignItems:"center", gap:6, background:`${color}18`, border:`1px solid ${color}44`, color, borderRadius:100, padding:"5px 14px", fontSize:11, fontWeight:800, letterSpacing:1, textTransform:"uppercase", ...s }}>{children}</span>
 );
@@ -75,7 +74,6 @@ function Footer() {
   );
 }
 
-// ─── Nav ──────────────────────────────────────────────────────────────────────
 function Nav({ active, onNavigate, user, onLogout, minimal }) {
   const [dropOpen, setDropOpen] = useState(false);
   return (
@@ -144,7 +142,6 @@ function Nav({ active, onNavigate, user, onLogout, minimal }) {
   );
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ active, onNavigate, user }) {
   const items = [
     { id:"arena",        icon:"🚀", label:"Battle Now" },
@@ -205,18 +202,26 @@ function LoginPage({ onNavigate, onLogin }) {
     setErr("");
     if (!form.email || !form.password) { setErr("Please fill in all fields."); return; }
     setLoading(true);
-    // Simulate auth — replace with real API call later
-    setTimeout(() => {
-      const username = form.email.split("@")[0];
-      onLogin({
-        username,
-        email: form.email,
-        initials: username.slice(0,2).toUpperCase(),
-        avatarColor:`linear-gradient(135deg,${C.purple},${C.cyan})`,
-        level: 24, xp: 3200, streak: 8, wins: 47, losses: 12,
-      });
-      onNavigate("home");
-    }, 900);
+    
+    fetch('http://localhost:5001/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: form.email, password: form.password })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        setErr(data.error);
+        setLoading(false);
+      } else {
+        onLogin(data.user);
+        onNavigate("home");
+      }
+    })
+    .catch(err => {
+      setErr("Server connection failed. Is the backend running?");
+      setLoading(false);
+    });
   };
 
   return (
@@ -285,16 +290,31 @@ function SignupPage({ onNavigate, onLogin }) {
     if (form.password !== form.confirm) { setErr("Passwords don't match."); return; }
     if (form.password.length < 6) { setErr("Password must be at least 6 characters."); return; }
     setLoading(true);
-    setTimeout(() => {
-      onLogin({
+    
+    fetch('http://localhost:5001/api/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         username: form.username,
         email: form.email,
-        initials: form.username.slice(0,2).toUpperCase(),
-        avatarColor: AVATAR_COLORS[avatarIdx],
-        level:1, xp:0, streak:0, wins:0, losses:0,
-      });
-      onNavigate("home");
-    }, 900);
+        password: form.password,
+        avatarColor: AVATAR_COLORS[avatarIdx]
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        setErr(data.error);
+        setLoading(false);
+      } else {
+        onLogin(data.user);
+        onNavigate("home");
+      }
+    })
+    .catch(err => {
+      setErr("Server connection failed. Is the backend running?");
+      setLoading(false);
+    });
   };
 
   return (
@@ -383,20 +403,11 @@ function ProfilePage({ onNavigate, user, onUpdateUser }) {
     { icon:"⭐", label:"Level",        value: user?.level   || 1 },
   ];
 
-  const history = [
-    { cat:"Quantum Physics", result:"WIN",  score:1850, date:"Today" },
-    { cat:"History",         result:"WIN",  score:1420, date:"Yesterday" },
-    { cat:"Geography",       result:"LOSS", score:890,  date:"2 days ago" },
-    { cat:"Science & Tech",  result:"WIN",  score:2100, date:"3 days ago" },
-    { cat:"History",         result:"WIN",  score:1650, date:"4 days ago" },
-  ];
-
   return (
     <div style={{ minHeight:"100vh", background:C.bg }}>
       <Nav active="profile" onNavigate={onNavigate} user={user} onLogout={() => onNavigate("home")} />
       <div style={{ maxWidth:860, margin:"0 auto", padding:"48px 32px 80px" }}>
 
-        {/* Header card */}
         <div className="card fade-up" style={{ padding:"36px 36px", marginBottom:24, display:"flex", alignItems:"center", gap:28 }}>
           <div style={{ position:"relative" }}>
             <Avatar size={88} color={user?.avatarColor || AVATAR_COLORS[avatarIdx]}>{user?.initials}</Avatar>
@@ -408,22 +419,12 @@ function ProfilePage({ onNavigate, user, onUpdateUser }) {
               <Badge color={C.gold}>Gold III</Badge>
             </div>
             <div style={{ color:C.textMuted, fontSize:14, marginBottom:12 }}>{user?.email}</div>
-            <div style={{ display:"flex", gap:16, alignItems:"center" }}>
-              <div style={{ fontSize:12, color:C.textMuted }}>Level {user?.level || 1}</div>
-              <div style={{ flex:1, maxWidth:200 }}>
-                <div style={{ height:5, background:C.border, borderRadius:99, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:"62%", background:`linear-gradient(90deg,${C.purple},${C.purpleL})`, borderRadius:99 }}/>
-                </div>
-              </div>
-              <div style={{ fontSize:12, color:C.textMuted }}>{user?.xp || 0} XP</div>
-            </div>
           </div>
           <button className="btn-outline" onClick={() => setEditing(v=>!v)} style={{ fontSize:13, padding:"10px 20px" }}>
             {editing ? "Cancel" : "✏️ Edit Profile"}
           </button>
         </div>
 
-        {/* Edit form */}
         {editing && (
           <div className="card fade-up" style={{ padding:"28px 36px", marginBottom:24 }}>
             <h3 style={{ fontWeight:800, fontSize:16, marginBottom:20 }}>Edit Profile</h3>
@@ -455,7 +456,6 @@ function ProfilePage({ onNavigate, user, onUpdateUser }) {
           </div>
         )}
 
-        {/* Stats */}
         <div className="fade-up" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24, animationDelay:".1s" }}>
           {stats.map(s => (
             <div key={s.label} className="card" style={{ padding:"20px 20px", textAlign:"center" }}>
@@ -464,22 +464,6 @@ function ProfilePage({ onNavigate, user, onUpdateUser }) {
               <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{s.label}</div>
             </div>
           ))}
-        </div>
-
-        {/* Battle history */}
-        <div className="fade-up" style={{ animationDelay:".15s" }}>
-          <h3 style={{ fontWeight:800, fontSize:18, marginBottom:14 }}>Recent Battles</h3>
-          <div className="card" style={{ overflow:"hidden" }}>
-            {history.map((h,i) => (
-              <div key={i} style={{ display:"flex", alignItems:"center", gap:16, padding:"14px 22px", borderBottom:i<history.length-1?`1px solid ${C.border}`:"none" }}>
-                <div style={{ width:8, height:8, borderRadius:"50%", background:h.result==="WIN"?C.green:C.red, flexShrink:0 }}/>
-                <span style={{ flex:1, fontWeight:600, fontSize:14 }}>{h.cat}</span>
-                <span style={{ fontSize:12, color:C.textMuted }}>{h.date}</span>
-                <span style={{ fontWeight:800, color:h.result==="WIN"?C.green:C.red, fontSize:13, width:40, textAlign:"center" }}>{h.result}</span>
-                <span style={{ fontWeight:700, fontSize:14, color:C.text, width:60, textAlign:"right" }}>{h.score.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
       <Footer/>
@@ -492,22 +476,19 @@ function ProfilePage({ onNavigate, user, onUpdateUser }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function LandingPage({ onNavigate, user }) {
   const features = [
-    { col:C.green,  icon:"⚡", title:"Dynamic Difficulty",  desc:"Our AI-driven engine adapts in real-time. The faster you answer correctly, the tougher the arena becomes — never a dull moment.", wide:true },
-    { col:C.purple, icon:"♡", title:"3 Lives. No Regrets.", desc:"Mistakes have consequences. Protect your streak or face the cooldown.", badge:true },
+    { col:C.green,  icon:"⚡", title:"Dynamic Difficulty",  desc:"Our AI-driven engine adapts in real-time.", wide:true },
+    { col:C.purple, icon:"♡", title:"3 Lives. No Regrets.", desc:"Mistakes have consequences.", badge:true },
     { col:C.gold,   icon:"🏆", title:"Ranked Play",         desc:"Climb from Bronze to Legend in monthly seasons." },
     { col:C.cyan,   icon:"👥", title:"Squad Battles",       desc:"Team up with friends for 4v4 cognitive combat." },
-    { col:C.orange, icon:"🎯", title:"Precision Scoring",   desc:"Speed and accuracy both count. Every millisecond matters." },
+    { col:C.orange, icon:"🎯", title:"Precision Scoring",   desc:"Speed and accuracy both count." },
   ];
   return (
     <div style={{ minHeight:"100vh", background:C.bg, overflowX:"hidden" }}>
       <Nav active="home" onNavigate={onNavigate} user={user} onLogout={() => {}} />
 
-      {/* Hero */}
       <section style={{ position:"relative", overflow:"hidden", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"88vh", padding:"100px 24px 140px", textAlign:"center" }}>
         <div style={{ position:"absolute", inset:0, pointerEvents:"none" }}>
           <div style={{ position:"absolute", width:720, height:720, borderRadius:"50%", background:"radial-gradient(circle,rgba(124,58,237,.2) 0%,transparent 65%)", top:"-15%", left:"50%", transform:"translateX(-50%)" }}/>
-          <div style={{ position:"absolute", width:380, height:380, borderRadius:"50%", background:"radial-gradient(circle,rgba(6,182,212,.11) 0%,transparent 65%)", bottom:"5%", right:"8%" }}/>
-          <div style={{ position:"absolute", width:280, height:280, borderRadius:"50%", background:"radial-gradient(circle,rgba(16,185,129,.09) 0%,transparent 65%)", bottom:"18%", left:"5%" }}/>
         </div>
 
         <div className="fade-up" style={{ marginBottom:28 }}>
@@ -527,7 +508,6 @@ function LandingPage({ onNavigate, user }) {
         </div>
       </section>
 
-      {/* Features */}
       <section style={{ maxWidth:1120, margin:"0 auto", padding:"0 32px 80px" }}>
         <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:20, marginBottom:20 }}>
           {features.slice(0,2).map((f,i) => <FCard key={i} f={f}/>)}
@@ -536,32 +516,6 @@ function LandingPage({ onNavigate, user }) {
           {features.slice(2).map((f,i) => <FCard key={i} f={f}/>)}
         </div>
       </section>
-
-      {/* Stats */}
-      <section style={{ maxWidth:1120, margin:"0 auto", padding:"0 32px 80px" }}>
-        <div className="card" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)" }}>
-          {[["500K+","Active Players"],["4.9M","Battles Fought"],["#1","Trivia Platform"]].map(([v,l],i) => (
-            <div key={l} style={{ padding:"32px 0", textAlign:"center", borderRight:i<2?`1px solid ${C.border}`:"none" }}>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:44, fontWeight:900, color:C.purpleL }}>{v}</div>
-              <div style={{ fontSize:13, color:C.textMuted, marginTop:4 }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      {!user && (
-        <section style={{ maxWidth:1120, margin:"0 auto", padding:"0 32px 80px" }}>
-          <div className="card" style={{ padding:"52px 40px", textAlign:"center" }}>
-            <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:38, fontWeight:900, textTransform:"uppercase", letterSpacing:2, marginBottom:12 }}>Ready to Climb the Leaderboard?</h2>
-            <p style={{ color:C.textMuted, fontSize:15, marginBottom:36 }}>Join over 500,000 players in the world's most intense mental competition.</p>
-            <div style={{ display:"flex", gap:16, justifyContent:"center" }}>
-              <button className="btn-green" onClick={() => onNavigate("signup")} style={{ animation:"glowGreen 2.8s infinite" }}>Create Free Account</button>
-              <button className="btn-outline" onClick={() => onNavigate("login")}>Log In</button>
-            </div>
-          </div>
-        </section>
-      )}
       <Footer/>
     </div>
   );
@@ -575,11 +529,6 @@ function FCard({ f }) {
       <div style={{ width:42,height:42,borderRadius:11,background:`${f.col}1e`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,marginBottom:16 }}>{f.icon}</div>
       <h3 style={{ fontSize:17,fontWeight:800,marginBottom:8 }}>{f.title}</h3>
       <p style={{ fontSize:13,color:C.textMuted,lineHeight:1.65 }}>{f.desc}</p>
-      {f.badge && (
-        <div style={{ display:"flex",gap:6,marginTop:20 }}>
-          {[1,.55,.25].map((o,i)=><div key={i} style={{ height:4,flex:1,borderRadius:99,background:C.purple,opacity:o }}/>)}
-        </div>
-      )}
     </div>
   );
 }
@@ -587,22 +536,35 @@ function FCard({ f }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ARENA PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-const CATS = [
-  { id:"geography", icon:"🌍", color:C.cyan,   title:"Geography",      desc:"Master the world's landscapes, borders, and cultures in high-stakes terrain challenges." },
-  { id:"history",   icon:"📜", color:C.green,  title:"History",        desc:"Relive defining moments and test your knowledge of the legends that shaped civilization." },
-  { id:"science",   icon:"🔬", color:C.purple, title:"Science & Tech", desc:"From quantum physics to code, tackle the frontier of human innovation and discovery." },
-];
-
-function ArenaPage({ onNavigate, user, onLogout }) {
+function ArenaPage({ onNavigate, user, onLogout, categories, setActiveCategory }) {
   return (
     <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-      <div style={{ padding:"36px 40px", maxWidth:1060 }}>
+      <div style={{ padding:"36px 40px", maxWidth:1060, margin:"0 auto" }}>
         <div className="fade-up">
           <div style={{ fontSize:11, fontWeight:800, letterSpacing:2, textTransform:"uppercase", color:C.textMuted, marginBottom:6 }}>Choose Your Arena</div>
-          <p style={{ color:C.textMuted, fontSize:14, marginBottom:32 }}>Select a category to begin your knowledge battle. Each victory climbs you higher in the global ranks.</p>
+          <p style={{ color:C.textMuted, fontSize:14, marginBottom:32 }}>Select a category to begin your knowledge battle. Live categories are pulled directly from the OpenTDB database.</p>
         </div>
         <div className="fade-up" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:20, animationDelay:".08s" }}>
-          {CATS.map(cat => <CatCard key={cat.id} cat={cat} onClick={() => onNavigate("battle")}/>)}
+          
+          {categories && categories.length === 0 ? (
+            <p style={{ color: C.textMuted }}>Loading live categories from API...</p>
+          ) : null}
+
+          {categories && categories.map((cat, i) => {
+            const colors = [C.cyan, C.green, C.purple, C.orange, C.pink, C.gold];
+            const icons = ["🌍", "📜", "🔬", "💻", "🎬", "📚", "🎵", "🏆", "🧠"];
+            const mappedCat = {
+              id: cat.id,
+              title: cat.name,
+              desc: `Master your knowledge in ${cat.name} and dominate the arena.`,
+              color: colors[i % colors.length],
+              icon: icons[i % icons.length]
+            };
+            return <CatCard key={cat.id} cat={mappedCat} onClick={() => {
+              setActiveCategory(cat.id);
+              onNavigate("battle");
+            }}/>
+          })}
         </div>
       </div>
     </Shell>
@@ -625,62 +587,95 @@ function CatCard({ cat, onClick }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // LEADERBOARD PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-const LB_DATA = [
-  { rank:1, name:"QuantumQuill", score:29400, streak:22, avatar:"🧑‍💻", badge:"Legend",   badgeC:"#f59e0b" },
-  { rank:2, name:"NeuralNova",   score:28750, streak:18, avatar:"⚡",    badge:"Legend",   badgeC:"#f59e0b" },
-  { rank:3, name:"CipherSage",   score:27300, streak:15, avatar:"🎯",    badge:"Diamond",  badgeC:C.cyan },
-  { rank:4, name:"You",          score:24850, streak:12, avatar:"😎",    badge:"Gold III", badgeC:C.gold, you:true },
-  { rank:5, name:"ByteBurner",   score:24120, streak:11, avatar:"🔥",    badge:"Gold II",  badgeC:C.gold },
-  { rank:6, name:"MindStorm",    score:23600, streak:9,  avatar:"🌩",    badge:"Gold I",   badgeC:C.gold },
-  { rank:7, name:"LogicLancer",  score:21900, streak:7,  avatar:"🏹",    badge:"Silver",   badgeC:C.textMuted },
-  { rank:8, name:"DataDrifter",  score:20450, streak:5,  avatar:"🌊",    badge:"Silver",   badgeC:C.textMuted },
-];
-
 function LeaderboardPage({ onNavigate, user, onLogout }) {
   const [tab,setTab]=useState("global");
-  const podium=[LB_DATA[1],LB_DATA[0],LB_DATA[2]];
-  const medals=["🥈","🥇","🥉"];
+  const [lbData, setLbData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('http://localhost:5001/api/scores')
+      .then(res => res.json())
+      .then(data => {
+        const formatted = data.map((item, index) => ({
+          rank: index + 1,
+          name: item.username,
+          score: item.score,
+          streak: Math.round(item.accuracy / 10), 
+          avatar: "🏆", 
+          badge: index < 3 ? "Legend" : "Gold",   
+          badgeC: index < 3 ? "#f59e0b" : C.gold,
+          you: user && item.username === user.username
+        }));
+        setLbData(formatted);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, [user]);
+
+  // ── FIX: Hardcoded structural rendering to guarantee 1st place is always center ──
+  const podiumIndices = [1, 0, 2]; // 2nd, 1st, 3rd
+  const medals = ["🥈", "🥇", "🥉"];
+
   return (
     <Shell active="leaderboard" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-      <div style={{ padding:"36px 40px", maxWidth:860 }}>
+      <div style={{ padding:"36px 40px", maxWidth:860, margin:"0 auto" }}>
         <div className="fade-up">
           <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Arena Rankings</h2>
-          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Season 3 — Resets in 12 days</p>
+          <p style={{ color:C.textMuted,fontSize:14,marginBottom:28 }}>Season 3 — Live Database Rankings</p>
         </div>
         <div className="fade-up" style={{ display:"flex",gap:4,marginBottom:28,background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:4,width:"fit-content",animationDelay:".08s" }}>
           {["global","friends","weekly"].map(t=>(
             <button key={t} onClick={()=>setTab(t)} style={{ padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,background:tab===t?C.purple:"none",color:tab===t?"#fff":C.textMuted,transition:"all .2s" }}>{t}</button>
           ))}
         </div>
-        {/* Podium */}
-        <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"1fr 1.12fr 1fr",gap:16,marginBottom:28,animationDelay:".14s" }}>
-          {podium.map((p,i)=>(
-            <div key={p.name} style={{ background:C.bgCard,border:`1px solid ${i===1?"#f59e0b55":C.border}`,borderRadius:14,padding:"24px 20px",textAlign:"center",marginTop:i===1?0:22,boxShadow:i===1?"0 0 32px rgba(245,158,11,.18)":"none" }}>
-              <div style={{ fontSize:28,marginBottom:8 }}>{medals[i]}</div>
-              <div style={{ width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,margin:"0 auto 10px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{p.avatar}</div>
-              <div style={{ fontWeight:800,fontSize:15,marginBottom:4 }}>{p.name}</div>
-              <div style={{ fontSize:11,color:p.badgeC,fontWeight:700,marginBottom:8 }}>{p.badge}</div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:i===1?C.gold:C.text }}>{p.score.toLocaleString()}</div>
+        
+        {loading ? (
+          <div style={{ color: C.textMuted, textAlign: "center", padding: "40px" }}><Dot/> Loading Database Scores...</div>
+        ) : (
+          <>
+            {/* Podium */}
+            <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"1fr 1.12fr 1fr",gap:16,marginBottom:28,animationDelay:".14s", alignItems: "end" }}>
+              {podiumIndices.map((dataIndex, visualSlot) => {
+                const p = lbData[dataIndex];
+                const isFirst = dataIndex === 0;
+                
+                // If there's no data for this slot (e.g. only 1 person in DB), render a faded box
+                if (!p) return <div key={visualSlot} style={{ background:C.bgCardAlt, borderRadius:14, height: 160, opacity: 0.3 }} />;
+
+                return (
+                  <div key={p.name} style={{ background:C.bgCard,border:`1px solid ${isFirst?C.gold:C.border}`,borderRadius:14,padding:"24px 20px",textAlign:"center",transform:isFirst?"translateY(-16px)":"none",boxShadow:isFirst?"0 0 32px rgba(245,158,11,.18)":"none" }}>
+                    <div style={{ fontSize:28,marginBottom:8 }}>{medals[dataIndex]}</div>
+                    <div style={{ width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,margin:"0 auto 10px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{p.avatar}</div>
+                    <div style={{ fontWeight:800,fontSize:15,marginBottom:4 }}>{p.name}</div>
+                    <div style={{ fontSize:11,color:p.badgeC,fontWeight:700,marginBottom:8 }}>{p.badge}</div>
+                    <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:isFirst?C.gold:C.text }}>{p.score.toLocaleString()}</div>
+                  </div>
+                )
+              })}
             </div>
-          ))}
-        </div>
-        {/* List */}
-        <div className="card fade-up" style={{ overflow:"hidden",animationDelay:".22s" }}>
-          {LB_DATA.map((p,i)=>(
-            <div key={p.name} style={{ display:"flex",alignItems:"center",gap:14,padding:"14px 22px",borderBottom:i<LB_DATA.length-1?`1px solid ${C.border}`:"none",background:p.you?`${C.purple}12`:"none",transition:"background .15s" }}
-              onMouseEnter={e=>{if(!p.you)e.currentTarget.style.background=C.bgCardAlt;}}
-              onMouseLeave={e=>{if(!p.you)e.currentTarget.style.background="none";}}>
-              <span style={{ width:24,textAlign:"center",fontSize:13,fontWeight:800,color:p.rank<=3?C.gold:C.textDim }}>{p.rank}</span>
-              <div style={{ width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{p.avatar}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700,fontSize:14 }}>{p.name}{p.you&&<span style={{ fontSize:11,color:C.green,marginLeft:6 }}>(You)</span>}</div>
-                <div style={{ fontSize:11,color:p.badgeC }}>{p.badge}</div>
-              </div>
-              <div style={{ fontSize:11,color:C.green,marginRight:12 }}>🔥 {p.streak}</div>
-              <div style={{ fontWeight:800,fontSize:15,color:p.rank===1?C.gold:C.text }}>{p.score.toLocaleString()}</div>
+
+            {/* List */}
+            <div className="card fade-up" style={{ overflow:"hidden",animationDelay:".22s" }}>
+              {lbData.map((p,i)=>(
+                <div key={i} style={{ display:"flex",alignItems:"center",gap:14,padding:"14px 22px",borderBottom:i<lbData.length-1?`1px solid ${C.border}`:"none",background:p.you?`${C.purple}12`:"none",transition:"background .15s" }}
+                  onMouseEnter={e=>{if(!p.you)e.currentTarget.style.background=C.bgCardAlt;}}
+                  onMouseLeave={e=>{if(!p.you)e.currentTarget.style.background="none";}}>
+                  <span style={{ width:24,textAlign:"center",fontSize:13,fontWeight:800,color:p.rank<=3?C.gold:C.textDim }}>{p.rank}</span>
+                  <div style={{ width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{p.avatar}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700,fontSize:14 }}>{p.name}{p.you&&<span style={{ fontSize:11,color:C.green,marginLeft:6 }}>(You)</span>}</div>
+                    <div style={{ fontSize:11,color:p.badgeC }}>{p.badge}</div>
+                  </div>
+                  <div style={{ fontSize:11,color:C.green,marginRight:12 }}>🔥 {p.streak}</div>
+                  <div style={{ fontWeight:800,fontSize:15,color:p.rank===1?C.gold:C.text }}>{p.score.toLocaleString()}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </div>
     </Shell>
   );
@@ -714,7 +709,7 @@ function TrainingPage({ onNavigate, user, onLogout }) {
   ];
   return (
     <Shell active="training" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-      <div style={{ padding:"36px 40px",maxWidth:920 }}>
+      <div style={{ padding:"36px 40px",maxWidth:920, margin:"0 auto" }}>
         <div className="fade-up">
           <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,textTransform:"uppercase",letterSpacing:2,marginBottom:6 }}>Training Centre</h2>
           <p style={{ color:C.textMuted,fontSize:14,marginBottom:32 }}>Sharpen your skills before the next ranked battle.</p>
@@ -722,40 +717,22 @@ function TrainingPage({ onNavigate, user, onLogout }) {
         <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:28,animationDelay:".1s" }}>
           {modes.map((m,idx)=> <ModeCard key={idx} m={m} onNavigate={onNavigate}/> )}
         </div>
-        <div className="card fade-up" style={{ padding:"28px 28px",animationDelay:".2s" }}>
-          <h3 style={{ fontWeight:800,marginBottom:20 }}>Your Progress This Week</h3>
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:20 }}>
-            {[["🎮","Sessions","14"],["✅","Accuracy","78%"],["⏱","Avg Speed","3.1s"],["📈","XP Earned","2,400"]].map(([ic,lb,val])=>(
-              <div key={lb} style={{ textAlign:"center" }}>
-                <div style={{ fontSize:24,marginBottom:4 }}>{ic}</div>
-                <div style={{ fontSize:11,color:C.textMuted,marginBottom:4 }}>{lb}</div>
-                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:C.purpleL }}>{val}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </Shell>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// BATTLE PAGE — auto-advance after answer
+// BATTLE PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-const QS = [
-  { cat:"Quantum Physics",  q:"Which phenomenon describes the ability of a subatomic particle to exist in multiple states simultaneously until it is observed?",   opts:["Quantum Entanglement","Superposition","The Uncertainty Principle","Wave-Particle Duality"], ans:1 },
-  { cat:"Science & Tech",   q:"What is the process by which plants convert sunlight into chemical energy?",                                                         opts:["Respiration","Fermentation","Photosynthesis","Transpiration"],                          ans:2 },
-  { cat:"History",          q:"In which year did the Berlin Wall fall, reuniting East and West Germany?",                                                           opts:["1987","1989","1991","1993"],                                                           ans:1 },
-  { cat:"Geography",        q:"Which country has the most natural lakes in the world?",                                                                              opts:["Russia","Brazil","USA","Canada"],                                                      ans:3 },
-  { cat:"Science & Tech",   q:"What gas do plants primarily absorb from the atmosphere during photosynthesis?",                                                     opts:["Oxygen","Nitrogen","Carbon Dioxide","Hydrogen"],                                       ans:2 },
-  { cat:"History",          q:"Who was the first person to walk on the moon?",                                                                                      opts:["Buzz Aldrin","Yuri Gagarin","Neil Armstrong","John Glenn"],                            ans:2 },
-  { cat:"Geography",        q:"What is the capital city of Australia?",                                                                                             opts:["Sydney","Melbourne","Brisbane","Canberra"],                                           ans:3 },
-  { cat:"Science & Tech",   q:"What does 'CPU' stand for?",                                                                                                        opts:["Central Processing Unit","Computer Power Unit","Core Processing Unit","Central Power Utility"], ans:0 },
-];
+const AUTO_ADVANCE_DELAY = 1200; 
 
-const AUTO_ADVANCE_DELAY = 1200; // ms after picking before moving to next question
+function BattlePage(props) {
+  const { onNavigate, user, onLogout, activeCategory, setLastBattleStats } = props;
+  const [liveQuestions, setLiveQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState(null); // ── NEW: Tracks Rate Limiting
 
-function BattlePage({ onNavigate, user, onLogout }) {
   const [qi,  setQi]   = useState(0);
   const [sel, setSel]  = useState(null);
   const [done,setDone] = useState(false);
@@ -764,32 +741,61 @@ function BattlePage({ onNavigate, user, onLogout }) {
   const [pts,setPts]=useState(0);
   const [timer,setTimer]=useState(14);
   const [shk,setShk]=useState(false);
-  const [feedback, setFeedback] = useState(null); // "correct" | "wrong"
+  const [feedback, setFeedback] = useState(null);
   const TOTAL=14;
-  const q=QS[qi];
+  const q=liveQuestions[qi];
+
+  const decodeHtml = (html) => {
+    const txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+  };
+
+  useEffect(() => {
+    if (!activeCategory) {
+      setLiveQuestions([]);
+      setLoading(false);
+      return;
+    }
+
+    setQi(0);
+    setLoading(true);
+    setApiError(null);
+
+    // ── FIX: Catching Rate Limit properly ──
+    fetch(`http://localhost:5001/api/questions/${activeCategory}`)
+      .then(async res => {
+        if (res.status === 429) throw new Error("OpenTDB API Rate Limit Reached. Please wait 5 seconds and try again.");
+        if (!res.ok) throw new Error("Failed to connect to the backend.");
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        return data;
+      })
+      .then(data => {
+        if (!data || data.length === 0) throw new Error("No questions available for this category right now.");
+        
+        const formatted = data.map(item => {
+          const options = [...item.incorrect_answers, item.correct_answer].sort(() => Math.random() - 0.5);
+          return {
+            cat: item.category,
+            q: decodeHtml(item.question),
+            opts: options.map(decodeHtml),
+            ans: options.indexOf(item.correct_answer),
+          };
+        });
+        setLiveQuestions(formatted);
+        setLoading(false);
+      })
+      .catch(err => {
+        setApiError(err.message);
+        setLoading(false);
+      });
+  }, [activeCategory]);
 
   useEffect(()=>{ setSel(null); setDone(false); setTimer(TOTAL); setFeedback(null); },[qi]);
 
-  // countdown timer
-  useEffect(()=>{
-    if(done) return;
-    if(timer<=0){ pick(-1); return; }
-    const t=setTimeout(()=>setTimer(v=>v-1),1000);
-    return()=>clearTimeout(t);
-  },[timer,done]);
-
-  // auto-advance after answering
-  useEffect(()=>{
-    if(!done) return;
-    const t=setTimeout(()=>{
-      if(qi>=QS.length-1){ onNavigate("results"); }
-      else{ setQi(v=>v+1); }
-    }, AUTO_ADVANCE_DELAY);
-    return()=>clearTimeout(t);
-  },[done,qi]);
-
-  const pick=(i)=>{
-    if(done) return;
+  const handlePick = useCallback((i) => {
+    if(done || !q) return;
     setSel(i); setDone(true);
     if(i===q.ans){
       setStreak(v=>v+1); setPts(v=>v+350+(timer*20));
@@ -799,18 +805,66 @@ function BattlePage({ onNavigate, user, onLogout }) {
       setFeedback("wrong");
       setShk(true); setTimeout(()=>setShk(false),600);
     }
-  };
+  }, [done, q, timer]);
+
+  useEffect(()=>{
+    if(done || loading || apiError) return;
+    if(timer<=0){ handlePick(-1); return; }
+    const t=setTimeout(()=>setTimer(v=>v-1),1000);
+    return()=>clearTimeout(t);
+  },[timer, done, loading, apiError, handlePick]);
+
+  useEffect(()=>{
+    if(!done) return;
+    const t=setTimeout(()=>{
+      if(qi>=liveQuestions.length-1 || lives <= 0){ 
+        setLastBattleStats({
+          score: pts,
+          accuracy: liveQuestions.length > 0 ? Math.round(((qi + 1 - (3 - lives)) / (qi + 1)) * 100) : 0,
+          category: liveQuestions[0]?.cat || "Mixed Arena"
+        });
+        onNavigate("results"); 
+      }
+      else{ setQi(v=>v+1); }
+    }, AUTO_ADVANCE_DELAY);
+    return()=>clearTimeout(t);
+  },[done, qi, liveQuestions.length, lives, onNavigate, pts, setLastBattleStats]);
+
+  // ── FIX: Show clear error UI instead of freezing ──
+  if (apiError) {
+    return (
+      <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+        <div style={{ padding:"80px 40px", textAlign:"center", maxWidth: 600, margin: "0 auto" }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>⏱️</div>
+          <h2 style={{ color: C.red, fontSize: 24, fontWeight: "bold", marginBottom: 12 }}>{apiError}</h2>
+          <p style={{ color: C.textMuted, marginBottom: 24 }}>The OpenTDB Trivia API only allows 1 request every 5 seconds. If you just finished a game, wait just a moment before starting another.</p>
+          <button className="btn-primary" onClick={() => onNavigate("arena")}>Go Back</button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
+        <div style={{ padding:"100px", textAlign:"center", color: C.purpleL, fontSize: 20, fontWeight: "bold", letterSpacing: 2 }}>
+          <Dot/> GENERATING ARENA...
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!q) return null;
 
   const frac=timer/TOTAL;
   const tc=timer<=4?C.red:timer<=8?C.orange:C.purpleL;
-  const prog=((qi+1)/QS.length)*100;
+  const prog = liveQuestions.length ? ((qi+1)/liveQuestions.length)*100 : 0;
   const circ=170;
 
   return (
     <Shell active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}>
-      <div style={{ padding:"24px 40px", maxWidth:800 }}>
+      <div style={{ padding:"24px 40px", maxWidth:800, margin:"0 auto" }}>
 
-        {/* HUD */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, gap:12 }}>
           <div className="card" style={{ padding:"10px 20px", minWidth:165 }}>
             <div style={{ fontSize:10,color:C.textMuted,fontWeight:700,letterSpacing:1 }}>LIVES LEFT</div>
@@ -826,7 +880,6 @@ function BattlePage({ onNavigate, user, onLogout }) {
             <div style={{ fontSize:10,color:C.textMuted,letterSpacing:1 }}>POINTS</div>
           </div>
 
-          {/* Timer ring */}
           <div style={{ position:"relative",width:66,height:66 }}>
             <svg width={66} height={66} style={{ transform:"rotate(-90deg)" }}>
               <circle cx={33} cy={33} r={27} fill="none" stroke={C.border} strokeWidth={5}/>
@@ -841,16 +894,14 @@ function BattlePage({ onNavigate, user, onLogout }) {
           </div>
         </div>
 
-        {/* Progress bar */}
         <div style={{ display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:C.textMuted,marginBottom:6,letterSpacing:1 }}>
-          <span>QUESTION {qi+1} OF {QS.length}</span>
+          <span>QUESTION {qi+1} OF {liveQuestions.length}</span>
           <span>{Math.round(prog)}% COMPLETE</span>
         </div>
         <div style={{ height:6,background:C.border,borderRadius:99,marginBottom:22,overflow:"hidden" }}>
           <div style={{ height:"100%",width:`${prog}%`,background:`linear-gradient(90deg,${C.purple},${C.green})`,borderRadius:99,transition:"width .4s" }}/>
         </div>
 
-        {/* Feedback banner — shows briefly after answering */}
         {feedback && (
           <div className="fade-in" style={{
             marginBottom:14, borderRadius:10, padding:"12px 20px",
@@ -864,7 +915,6 @@ function BattlePage({ onNavigate, user, onLogout }) {
           </div>
         )}
 
-        {/* Question card */}
         <div className="card slide-in" key={qi} style={{ padding:"32px 36px", marginBottom:14, animation:shk?"shake .5s ease":"none" }}>
           <Badge color={C.cyan} style={{ marginBottom:20 }}>{q.cat}</Badge>
           <h2 style={{ fontSize:20,fontWeight:800,lineHeight:1.55,marginBottom:28 }}>{q.q}</h2>
@@ -877,7 +927,7 @@ function BattlePage({ onNavigate, user, onLogout }) {
                 else if(i===sel) { bg=`${C.red}18`;   brd=C.red;   col=C.red; }
               }
               return (
-                <button key={i} onClick={()=>pick(i)} style={{
+                <button key={i} onClick={()=>handlePick(i)} style={{
                   display:"flex",alignItems:"center",gap:14,
                   background:bg,border:`1.5px solid ${brd}`,borderRadius:11,
                   padding:"14px 18px",color:col,fontSize:14,fontWeight:fw,textAlign:"left",
@@ -897,17 +947,6 @@ function BattlePage({ onNavigate, user, onLogout }) {
             })}
           </div>
         </div>
-
-        {/* Power-ups */}
-        <div style={{ display:"flex",gap:10,justifyContent:"center" }}>
-          {[["👁","50/50"],["⏱","+10 SEC"],["👥","POLL"]].map(([ic,lb])=>(
-            <button key={lb} style={{ background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 20px",color:C.textMuted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,fontSize:18,transition:"all .15s" }}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor=C.purple;e.currentTarget.style.color=C.purpleL;}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.textMuted;}}>
-              {ic}<span style={{ fontSize:10,fontWeight:700,letterSpacing:1 }}>{lb}</span>
-            </button>
-          ))}
-        </div>
       </div>
     </Shell>
   );
@@ -916,12 +955,28 @@ function BattlePage({ onNavigate, user, onLogout }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // RESULTS PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function ResultsPage({ onNavigate, user, onLogout }) {
-  const lb=[
-    { rank:1,name:"QuantumQuill",score:29400,avatar:"🧑‍💻" },
-    { rank:4,name: user?.username||"You", score:24850,avatar:"😎",you:true },
-    { rank:5,name:"ByteBurner",  score:24120,avatar:"🔥" },
-  ];
+function ResultsPage({ onNavigate, user, onLogout, lastBattleStats }) {
+  const stats = lastBattleStats || { score: 0, accuracy: 0, category: "Unknown" };
+  const xpEarned = Math.floor(stats.score / 100);
+
+  useEffect(() => {
+    if (user && stats.score > 0) {
+      fetch('http://localhost:5001/api/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: user.username,
+          score: stats.score,
+          accuracy: stats.accuracy,
+          category: stats.category
+        })
+      })
+      .then(res => res.json())
+      .then(data => console.log("Score saved:", data))
+      .catch(err => console.error("Error saving score:", err));
+    }
+  }, [user, stats]);
+
   return (
     <div style={{ minHeight:"100vh",background:C.bg }}>
       <Nav active="arena" onNavigate={onNavigate} user={user} onLogout={onLogout}/>
@@ -934,7 +989,7 @@ function ResultsPage({ onNavigate, user, onLogout }) {
         <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"1fr auto",gap:16,marginBottom:16,animationDelay:".1s" }}>
           <div className="card" style={{ padding:"28px 28px" }}>
             <div style={{ fontSize:10,letterSpacing:1.5,fontWeight:700,color:C.textMuted,marginBottom:8 }}>FINAL ARENA SCORE</div>
-            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:44,fontWeight:900,color:C.green,marginBottom:18 }}>+150 XP</div>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontSize:44,fontWeight:900,color:C.green,marginBottom:18 }}>+{xpEarned} XP</div>
             <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12 }}>
               <span style={{ color:C.textMuted }}>Battle Progress</span>
               <span style={{ color:C.purpleL,fontWeight:700 }}>LVL {user?.level||1}</span>
@@ -944,7 +999,7 @@ function ResultsPage({ onNavigate, user, onLogout }) {
             </div>
           </div>
           <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-            {[["🏆","PERSONAL BEST","26,100",C.text],["🎯","PRECISION","94%",C.green]].map(([ic,lb2,val,col])=>(
+            {[["🏆","TOTAL SCORE", stats.score.toLocaleString(),C.text],["🎯","PRECISION", `${stats.accuracy}%`,C.green]].map(([ic,lb2,val,col])=>(
               <div key={lb2} className="card" style={{ padding:"18px 22px",textAlign:"center",minWidth:150 }}>
                 <div style={{ fontSize:18,marginBottom:4 }}>{ic}</div>
                 <div style={{ fontSize:10,letterSpacing:1,fontWeight:700,color:C.textMuted }}>{lb2}</div>
@@ -953,32 +1008,9 @@ function ResultsPage({ onNavigate, user, onLogout }) {
             ))}
           </div>
         </div>
-        <div className="fade-up" style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:30,animationDelay:".15s" }}>
-          {[["⚡","SPEED BONUS","2.4s Avg"],["🔥","STREAK","12 Correct"],["🎖","RANK UP","Gold III"],["💀","LIVES LOST","0/3"]].map(([ic,lb2,val])=>(
-            <div key={lb2} className="card" style={{ padding:"16px 16px" }}>
-              <div style={{ fontSize:20,marginBottom:4 }}>{ic}</div>
-              <div style={{ fontSize:9,color:C.textMuted,fontWeight:700,letterSpacing:1 }}>{lb2}</div>
-              <div style={{ fontWeight:800,fontSize:16,marginTop:2 }}>{val}</div>
-            </div>
-          ))}
-        </div>
-        <div className="fade-up" style={{ display:"flex",gap:14,justifyContent:"center",marginBottom:50,animationDelay:".2s" }}>
+        <div className="fade-up" style={{ display:"flex",gap:14,justifyContent:"center",marginTop:50,animationDelay:".2s" }}>
           <button className="btn-primary" onClick={()=>onNavigate("battle")} style={{ fontSize:16,padding:"16px 40px",animation:"glow 2.8s infinite" }}>🔄 Play Again</button>
           <button className="btn-outline" onClick={()=>onNavigate("arena")} style={{ fontSize:16,padding:"16px 40px" }}>← Back to Arena</button>
-        </div>
-        <div className="fade-up" style={{ animationDelay:".25s" }}>
-          <h3 style={{ fontWeight:800,fontSize:18,marginBottom:14 }}>Arena Rankings</h3>
-          <div className="card" style={{ overflow:"hidden" }}>
-            {lb.map((p,i)=>(
-              <div key={p.name} style={{ display:"flex",alignItems:"center",gap:14,padding:"16px 22px",borderBottom:i<lb.length-1?`1px solid ${C.border}`:"none",background:p.you?`${C.purple}12`:"none" }}>
-                <span style={{ width:22,fontWeight:800,fontSize:13,color:p.rank===1?C.gold:C.textDim }}>{p.rank}</span>
-                <div style={{ width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.cyan})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{p.avatar}</div>
-                <span style={{ flex:1,fontWeight:p.you?700:500 }}>{p.name}</span>
-                {p.you&&<span style={{ fontSize:11,color:C.green,fontWeight:700 }}>Recently Achieved</span>}
-                <span style={{ fontWeight:800,color:p.rank===1?C.gold:C.text }}>{p.score.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
       <Footer/>
@@ -992,6 +1024,17 @@ function ResultsPage({ onNavigate, user, onLogout }) {
 export default function App() {
   const [page, setPage] = useState("home");
   const [user, setUser] = useState(null);
+  
+  const [categories, setCategories] = useState([]);
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [lastBattleStats, setLastBattleStats] = useState(null);
+
+  useEffect(() => {
+    fetch('http://localhost:5001/api/categories')
+      .then((response) => response.json())
+      .then((data) => setCategories(data))
+      .catch((err) => console.error("Error fetching categories:", err));
+  }, []);
 
   const nav = useCallback((dest) => {
     const map = {
@@ -1008,7 +1051,11 @@ export default function App() {
   const logout = useCallback(() => { setUser(null); setPage("home"); }, []);
   const updateUser = useCallback((u) => setUser(u), []);
 
-  const shared = { onNavigate:nav, user, onLogout:logout };
+  const shared = { 
+    onNavigate:nav, user, onLogout:logout, 
+    categories, activeCategory, setActiveCategory,
+    lastBattleStats, setLastBattleStats
+  };
 
   return (
     <>
